@@ -56,8 +56,8 @@ func newServer(database string, port string) (*server, error) {
 }
 
 // Ignores arrays
-func getPathValues(obj map[string]any, prefix string) []string {
-	var pvs []string
+func getPathValues(obj map[string]any, prefix string) [][]byte {
+	var pvs [][]byte
 	for key, val := range obj {
 		switch t := val.(type) {
 		case map[string]any:
@@ -72,7 +72,11 @@ func getPathValues(obj map[string]any, prefix string) []string {
 			key = prefix + "." + key
 		}
 
-		pvs = append(pvs, fmt.Sprintf("%s=%v", key, val))
+		pvk := pathValueAsKey(key, fmt.Sprintf("%v", val))
+
+		fmt.Printf("Added index val: %v\n", pvk)
+
+		pvs = append(pvs, pvk)
 	}
 
 	return pvs
@@ -110,7 +114,7 @@ func (s server) index(id string, document map[string]any) {
 				log.Printf("Could not close: %s", err)
 			}
 		}
-		err = s.indexDb.Set([]byte(pathValue), idsString, pebble.Sync)
+		err = s.indexDb.Set(pathValue, idsString, pebble.Sync)
 		if err != nil {
 			log.Printf("Could not update index: %s", err)
 		}
@@ -351,8 +355,8 @@ func (s server) getDocumentById(id []byte) (map[string]any, error) {
 	return document, err
 }
 
-func (s server) lookup(pathValue string) ([]string, error) {
-	idsString, closer, err := s.indexDb.Get([]byte(pathValue))
+func (s server) lookup(pathValue []byte) ([]string, error) {
+	idsString, closer, err := s.indexDb.Get(pathValue)
 	if err != nil && err != pebble.ErrNotFound {
 		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pathValue, err)
 	}
@@ -365,6 +369,16 @@ func (s server) lookup(pathValue string) ([]string, error) {
 	}
 
 	return strings.Split(string(idsString), ","), nil
+}
+
+// pathValueAsKey returns a []byte key for path and value.
+func pathValueAsKey(path string, value interface{}) []byte {
+	k := []byte(path)
+	v := []byte(fmt.Sprintf("%v", value))
+	pathValue := make([]byte, len(k)+len(v)+1)
+	copy(pathValue[0:], k[0:])
+	copy(pathValue[len(k)+1:], v[0:])
+	return pathValue
 }
 
 func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -381,11 +395,19 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 		if argument.op == "=" {
 			nonRangeArguments++
 
-			ids, err := s.lookup(fmt.Sprintf("%s=%v", strings.Join(argument.key, "."), argument.value))
+			pvk := pathValueAsKey(
+				strings.Join(argument.key, "."),
+				argument.value,
+			)
+			fmt.Printf("Lookup val: %v\n", pvk)
+
+			ids, err := s.lookup(pvk)
 			if err != nil {
 				jsonResponse(w, nil, err)
 				return
 			}
+
+			fmt.Printf("ids: %v\n", ids)
 
 			for _, id := range ids {
 				_, ok := idsArgumentCount[id]
