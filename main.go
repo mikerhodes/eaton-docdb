@@ -388,22 +388,53 @@ func (s server) greaterThanLookup(path string, value interface{}) ([]string, err
 	return ids, iter.Close()
 }
 
+func (s server) lessThanLookup(path string, value interface{}) ([]string, error) {
+	ids := []string{}
+	startKey := pathStartKey(path)
+	endKey := pathValueAsKey(path, fmt.Sprintf("%v", value))
+
+	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+
+	iter := s.indexDb.NewIter(readOptions)
+	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
+		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		ids = append(
+			ids,
+			strings.Split(string(iter.Value()), ",")...)
+	}
+	return ids, iter.Close()
+}
+
 // pathValueAsKey returns a []byte key for path and value.
 func pathValueAsKey(path string, value interface{}) []byte {
+	fmt.Printf("path: %+v, value: %+v\n", path, value)
 	k := []byte(path)
 	v := []byte(fmt.Sprintf("%v", value))
 	pathValue := make([]byte, len(k)+len(v)+1)
 	copy(pathValue[0:], k[0:])
-	// there's a \0 separator here
+	// there's an implied \0 separator at pathValye[len(k)]
 	copy(pathValue[len(k)+1:], v[0:])
 	return pathValue
 }
 
+// pathEndKey returns a key just beyond the end of the path
+// This relies on the fact that no-one will likely use
+// value 1 in a field name, "Start of Header" character.
 func pathEndKey(path string) []byte {
 	k := []byte(path)
 	pathValue := make([]byte, len(k)+1)
 	copy(pathValue[0:], k[0:])
 	pathValue[len(k)] = 1 // ie, above the \0 separator
+	return pathValue
+}
+
+// pathStartKey returns a key that is the lowest that
+// path could have.
+func pathStartKey(path string) []byte {
+	k := []byte(path)
+	pathValue := make([]byte, len(k)+1)
+	copy(pathValue[0:], k[0:])
+	pathValue[len(k)] = 0
 	return pathValue
 }
 
@@ -450,9 +481,20 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 				return
 			}
 
-			fmt.Printf("ids: %v\n", ids)
+			fmt.Printf("greaterThan ids: %v\n", ids)
 
 			isRange = true
+		} else if argument.op == "<" {
+			ids, err := s.lessThanLookup(strings.Join(argument.key, "."), argument.value)
+			if err != nil {
+				jsonResponse(w, nil, err)
+				return
+			}
+
+			fmt.Printf("lessThan ids: %v\n", ids)
+
+			isRange = true
+
 		}
 	}
 
