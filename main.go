@@ -371,13 +371,39 @@ func (s server) lookup(pathValue []byte) ([]string, error) {
 	return strings.Split(string(idsString), ","), nil
 }
 
+func (s server) greaterThanLookup(path string, value interface{}) ([]string, error) {
+	ids := []string{}
+	startKey := pathValueAsKey(path, fmt.Sprintf("%v", value))
+	endKey := pathEndKey(path)
+
+	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+
+	iter := s.indexDb.NewIter(readOptions)
+	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
+		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		ids = append(
+			ids,
+			strings.Split(string(iter.Value()), ",")...)
+	}
+	return ids, iter.Close()
+}
+
 // pathValueAsKey returns a []byte key for path and value.
 func pathValueAsKey(path string, value interface{}) []byte {
 	k := []byte(path)
 	v := []byte(fmt.Sprintf("%v", value))
 	pathValue := make([]byte, len(k)+len(v)+1)
 	copy(pathValue[0:], k[0:])
+	// there's a \0 separator here
 	copy(pathValue[len(k)+1:], v[0:])
+	return pathValue
+}
+
+func pathEndKey(path string) []byte {
+	k := []byte(path)
+	pathValue := make([]byte, len(k)+1)
+	copy(pathValue[0:], k[0:])
+	pathValue[len(k)] = 1 // ie, above the \0 separator
 	return pathValue
 }
 
@@ -417,7 +443,15 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 
 				idsArgumentCount[id]++
 			}
-		} else {
+		} else if argument.op == ">" {
+			ids, err := s.greaterThanLookup(strings.Join(argument.key, "."), argument.value)
+			if err != nil {
+				jsonResponse(w, nil, err)
+				return
+			}
+
+			fmt.Printf("ids: %v\n", ids)
+
 			isRange = true
 		}
 	}
