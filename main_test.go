@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,140 +44,45 @@ func Test_getPath(t *testing.T) {
 	}
 }
 
-func Test_lexString(t *testing.T) {
-	tests := []struct {
-		input          string
-		index          int
-		expectedString string
-		expectedIndex  int
-		expectedErr    error
-	}{
-		{
-			"a.b:c",
-			0,
-			"a.b",
-			3,
-			nil,
-		},
-		{
-			`"a b : . 2":12`,
-			0,
-			"a b : . 2",
-			11,
-			nil,
-		},
-		{
-			` a:2`,
-			0,
-			"",
-			0,
-			fmt.Errorf("No string found"),
-		},
-		{
-			` a:2`,
-			1,
-			"a",
-			2,
-			nil,
-		},
-	}
-
-	for _, test := range tests {
-		s, outIndex, err := lexString([]rune(test.input), test.index)
-		assert.Equal(t, test.expectedString, s)
-		assert.Equal(t, test.expectedIndex, outIndex)
-		assert.Equal(t, test.expectedErr, err)
-	}
+func makePVS(path, value string) []byte {
+	pv := []byte(path)
+	pv = append(pv, 0)
+	pv = append(pv, JSONTagString)
+	pv = append(pv, []byte(value)...)
+	return pv
 }
 
-func Test_parseQuery(t *testing.T) {
-	tests := []struct {
-		q             string
-		expectedQuery query
-		expectedErr   error
-	}{
-		{
-			"a.b:1 c:>2",
-			query{
-				[]queryComparison{
-					{
-						key:   []string{"a", "b"},
-						value: "1",
-						op: "=",
-					},
-					{
-						key:   []string{"c"},
-						value: "2",
-						op: ">",
-					},
-				},
-			},
-			nil,
-		},
-		{
-			"a:<1",
-			query{
-				[]queryComparison{
-					{
-						key:   []string{"a"},
-						value: "1",
-						op: "<",
-					},
-				},
-			},
-			nil,
-		},
-		{
-			`" a ":" n "`,
-			query{
-				[]queryComparison{
-					{
-						key:   []string{" a "},
-						value: " n ",
-						op: "=",
-					},
-				},
-			},
-			nil,
-		},
-		{
-			"",
-			query{},
-			nil,
-		},
-	}
-
-	for _, test := range tests {
-		query, err := parseQuery(test.q)
-		if query == nil {
-			fmt.Println(test, err)
-		}
-		assert.Equal(t, test.expectedQuery, *query)
-		assert.Equal(t, test.expectedErr, err)
-	}
+func makePVI(path string, value int) []byte {
+	pv := []byte(path)
+	pv = append(pv, 0)
+	pv = append(pv, JSONTagNumber)
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], math.Float64bits(float64(value)))
+	pv = append(pv, buf[:]...)
+	return pv
 }
 
 func Test_getPathValues(t *testing.T) {
 	tests := []struct {
 		obj         map[string]any
 		prefix      string
-		expectedPvs []string
+		expectedPvs [][]byte
 	}{
 		{
-			map[string]any{"a": 2, "b": 4, "c": "hey im here"},
+			map[string]any{"a": 2, "b": 4, "c": "hey world"},
 			"",
-			[]string{"a=2", "b=4", "c=hey im here"},
+			[][]byte{makePVI("a", 2), makePVI("b", 4), makePVS("c", "hey world")},
 		},
 		{
-			map[string]any{"a": map[string]any{"12": "19"}},
+			map[string]any{"a": map[string]any{"12": "foo"}},
 			"",
-			[]string{"a.12=19"},
+			[][]byte{makePVS("a.12", "foo")},
 		},
 	}
 
 	for _, test := range tests {
 		pvs := getPathValues(test.obj, test.prefix)
-		assert.Equal(t, len(pvs), len(test.expectedPvs))
-		assert.Equal(t, pvs, test.expectedPvs)
+		assert.Equal(t, len(test.expectedPvs), len(pvs))
+		assert.ElementsMatch(t, test.expectedPvs, pvs)
 	}
 }

@@ -1,50 +1,39 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
+	"math"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/google/uuid"
-	"github.com/julienschmidt/httprouter"
+	// "github.com/google/uuid"
 )
 
-func jsonResponse(w http.ResponseWriter, body map[string]any, err error) {
-	data := map[string]any{
-		"body":   body,
-		"status": "ok",
-	}
-
-	if err == nil {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		data["status"] = "error"
-		data["error"] = err.Error()
-		w.WriteHeader(http.StatusBadRequest)
-	}
-	w.Header().Set("Content-Type", "application/json")
-
-	enc := json.NewEncoder(w)
-	err = enc.Encode(data)
-	if err != nil {
-		// TODO: set up panic handler?
-		panic(err)
-	}
-}
+// Tags for the values of JSON
+// primitives. Objects and arrays
+// are encoded into the path.
+// Tags are inserted prior to the
+// values in pathValues for keys to
+// ensure sort ordering.
+const (
+	JSONTagTrue = iota + 40 // printable character makes easier debugging
+	JSONTagFalse
+	JSONTagNull
+	JSONTagString // +
+	JSONTagNumber // ,
+)
 
 type server struct {
 	db      *pebble.DB // Primary data
 	indexDb *pebble.DB // Index data
-	port    string
 }
 
-func newServer(database string, port string) (*server, error) {
-	s := server{db: nil, port: port}
+func newServer(database string) (*server, error) {
+	s := server{db: nil}
 	var err error
 	s.db, err = pebble.Open(database, &pebble.Options{})
 	if err != nil {
@@ -121,34 +110,23 @@ func (s server) index(id string, document map[string]any) {
 	}
 }
 
-func (s server) addDocument(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	dec := json.NewDecoder(r.Body)
-	var document map[string]any
-	err := dec.Decode(&document)
-	if err != nil {
-		jsonResponse(w, nil, err)
-		return
-	}
+func (s server) addDocument(id string, document map[string]any) error {
 
 	// New unique id for the document
-	id := uuid.New().String()
+	// id := uuid.New().String()
 
 	s.index(id, document)
 
 	bs, err := json.Marshal(document)
 	if err != nil {
-		jsonResponse(w, nil, err)
-		return
+		return err
 	}
 	err = s.db.Set([]byte(id), bs, pebble.Sync)
 	if err != nil {
-		jsonResponse(w, nil, err)
-		return
+		return err
 	}
 
-	jsonResponse(w, map[string]any{
-		"id": id,
-	}, nil)
+	return nil
 }
 
 type queryComparison struct {
@@ -251,98 +229,6 @@ func (q query) match(doc map[string]any) bool {
 	return true
 }
 
-// Handles either quoted strings or unquoted strings of only contiguous digits and letters
-func lexString(input []rune, index int) (string, int, error) {
-	if index >= len(input) {
-		return "", index, nil
-	}
-	if input[index] == '"' {
-		index++
-		foundEnd := false
-
-		var s []rune
-		// TODO: handle nested quotes
-		for index < len(input) {
-			if input[index] == '"' {
-				foundEnd = true
-				break
-			}
-
-			s = append(s, input[index])
-			index++
-		}
-
-		if !foundEnd {
-			return "", index, fmt.Errorf("Expected end of quoted string")
-		}
-
-		return string(s), index + 1, nil
-	}
-
-	// If unquoted, read as much contiguous digits/letters as there are
-	var s []rune
-	var c rune
-	// TODO: someone needs to validate there's not ...
-	for index < len(input) {
-		c = input[index]
-		if !(unicode.IsLetter(c) || unicode.IsDigit(c) || c == '.') {
-			break
-		}
-		s = append(s, c)
-		index++
-	}
-
-	if len(s) == 0 {
-		return "", index, fmt.Errorf("No string found")
-	}
-
-	return string(s), index, nil
-}
-
-// E.g. q=a.b:12
-func parseQuery(q string) (*query, error) {
-	if q == "" {
-		return &query{}, nil
-	}
-
-	i := 0
-	var parsed query
-	var qRune = []rune(q)
-	for i < len(qRune) {
-		// Eat whitespace
-		for unicode.IsSpace(qRune[i]) {
-			i++
-		}
-
-		key, nextIndex, err := lexString(qRune, i)
-		if err != nil {
-			return nil, fmt.Errorf("Expected valid key, got [%s]: `%s`", err, q[nextIndex:])
-		}
-
-		if q[nextIndex] != ':' {
-			return nil, fmt.Errorf("Expected colon at %d, got: `%s`", nextIndex, q[nextIndex:])
-		}
-		i = nextIndex + 1
-
-		op := "="
-		if q[i] == '>' || q[i] == '<' {
-			op = string(q[i])
-			i++
-		}
-
-		value, nextIndex, err := lexString(qRune, i)
-		if err != nil {
-			return nil, fmt.Errorf("Expected valid value, got [%s]: `%s`", err, q[nextIndex:])
-		}
-		i = nextIndex
-
-		argument := queryComparison{key: strings.Split(key, "."), value: value, op: op}
-		parsed.ands = append(parsed.ands, argument)
-	}
-
-	return &parsed, nil
-}
-
 func (s server) getDocumentById(id []byte) (map[string]any, error) {
 	valBytes, closer, err := s.db.Get(id)
 	if err != nil {
@@ -377,6 +263,7 @@ func (s server) greaterThanLookup(path string, value interface{}) ([]string, err
 	endKey := pathEndKey(path)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+	fmt.Printf("greaterThan: %+v\n", readOptions)
 
 	iter := s.indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
@@ -394,6 +281,7 @@ func (s server) lessThanLookup(path string, value interface{}) ([]string, error)
 	endKey := pathValueAsKey(path, fmt.Sprintf("%v", value))
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+	fmt.Printf("lessThan: %+v\n", readOptions)
 
 	iter := s.indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
@@ -406,15 +294,30 @@ func (s server) lessThanLookup(path string, value interface{}) ([]string, error)
 }
 
 // pathValueAsKey returns a []byte key for path and value.
-func pathValueAsKey(path string, value interface{}) []byte {
+func pathValueAsKey(path string, value string) []byte {
 	fmt.Printf("path: %+v, value: %+v\n", path, value)
-	k := []byte(path)
-	v := []byte(fmt.Sprintf("%v", value))
-	pathValue := make([]byte, len(k)+len(v)+1)
-	copy(pathValue[0:], k[0:])
-	// there's an implied \0 separator at pathValye[len(k)]
-	copy(pathValue[len(k)+1:], v[0:])
-	return pathValue
+	pv := []byte(path)
+	pv = append(pv, 0)
+
+	// For int values, not floats for now, convert into
+	// an int64.
+	// TODO Is BigEndian right?
+	// TODO https://stackoverflow.com/a/7926429
+	// TODO tag values to ensure sorts of ints, bools, strings
+	// TODO right now this will also encode a JSON string
+	// of 45 as an int, which we shouldn't do...
+	i, err := strconv.Atoi(value)
+	if err == nil {
+		pv = append(pv, JSONTagNumber)
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf[:], math.Float64bits(float64(i)))
+		pv = append(pv, buf[:]...)
+	} else {
+		pv = append(pv, JSONTagString)
+		pv = append(pv, []byte(value)...)
+	}
+
+	return pv
 }
 
 // pathEndKey returns a key just beyond the end of the path
@@ -438,20 +341,12 @@ func pathStartKey(path string) []byte {
 	return pathValue
 }
 
-func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	q, err := parseQuery(r.URL.Query().Get("q"))
-	if err != nil {
-		jsonResponse(w, nil, err)
-		return
-	}
-
-	isRange := false
+func (s server) searchIndex(q *query) ([]string, bool, error) {
 	idsArgumentCount := map[string]int{}
 	nonRangeArguments := 0
 	for _, argument := range q.ands {
+		var ids []string
 		if argument.op == "=" {
-			nonRangeArguments++
-
 			pvk := pathValueAsKey(
 				strings.Join(argument.key, "."),
 				argument.value,
@@ -460,41 +355,33 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 
 			ids, err := s.lookup(pvk)
 			if err != nil {
-				jsonResponse(w, nil, err)
-				return
+				return nil, false, err
 			}
 
-			fmt.Printf("ids: %v\n", ids)
-
-			for _, id := range ids {
-				_, ok := idsArgumentCount[id]
-				if !ok {
-					idsArgumentCount[id] = 0
-				}
-
-				idsArgumentCount[id]++
-			}
+			fmt.Printf("equalTo ids: %v\n", ids)
 		} else if argument.op == ">" {
 			ids, err := s.greaterThanLookup(strings.Join(argument.key, "."), argument.value)
 			if err != nil {
-				jsonResponse(w, nil, err)
-				return
+				return nil, false, err
 			}
 
 			fmt.Printf("greaterThan ids: %v\n", ids)
-
-			isRange = true
 		} else if argument.op == "<" {
 			ids, err := s.lessThanLookup(strings.Join(argument.key, "."), argument.value)
 			if err != nil {
-				jsonResponse(w, nil, err)
-				return
+				return nil, false, err
 			}
 
 			fmt.Printf("lessThan ids: %v\n", ids)
+		}
 
-			isRange = true
+		for _, id := range ids {
+			_, ok := idsArgumentCount[id]
+			if !ok {
+				idsArgumentCount[id] = 0
+			}
 
+			idsArgumentCount[id]++
 		}
 	}
 
@@ -505,16 +392,22 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 		}
 	}
 
+	return idsInAll, false, nil
+}
+
+func (s server) searchDocuments(q *query, skipIndex bool) (map[string]interface{}, error) {
+
+	idsInAll, isRange, _ := s.searchIndex(q)
+
 	var documents []any
-	if r.URL.Query().Get("skipIndex") == "true" {
+	if skipIndex {
 		idsInAll = nil
 	}
 	if len(idsInAll) > 0 {
 		for _, id := range idsInAll {
 			document, err := s.getDocumentById([]byte(id))
 			if err != nil {
-				jsonResponse(w, nil, err)
-				return
+				return nil, err
 			}
 
 			if !isRange || q.match(document) {
@@ -529,10 +422,9 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 		defer iter.Close()
 		for iter.First(); iter.Valid(); iter.Next() {
 			var document map[string]any
-			err = json.Unmarshal(iter.Value(), &document)
+			err := json.Unmarshal(iter.Value(), &document)
 			if err != nil {
-				jsonResponse(w, nil, err)
-				return
+				return nil, err
 			}
 
 			if q.match(document) {
@@ -544,21 +436,7 @@ func (s server) searchDocuments(w http.ResponseWriter, r *http.Request, ps httpr
 		}
 	}
 
-	jsonResponse(w, map[string]any{"documents": documents, "count": len(documents)}, nil)
-}
-
-func (s server) getDocument(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	id := ps.ByName("id")
-
-	document, err := s.getDocumentById([]byte(id))
-	if err != nil {
-		jsonResponse(w, nil, err)
-		return
-	}
-
-	jsonResponse(w, map[string]any{
-		"document": document,
-	}, nil)
+	return map[string]any{"documents": documents, "count": len(documents)}, nil
 }
 
 func (s server) reindex() {
@@ -575,19 +453,11 @@ func (s server) reindex() {
 }
 
 func main() {
-	s, err := newServer("docdb.data", "8080")
+	s, err := newServer("docdb.data")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.db.Close()
 
 	s.reindex()
-
-	router := httprouter.New()
-	router.POST("/docs", s.addDocument)
-	router.GET("/docs", s.searchDocuments)
-	router.GET("/docs/:id", s.getDocument)
-
-	log.Println("Listening on " + s.port)
-	log.Fatal(http.ListenAndServe(":"+s.port, router))
 }
