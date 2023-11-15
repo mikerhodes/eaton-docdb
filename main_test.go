@@ -86,3 +86,8 @@ func Test_getPathValues(t *testing.T) {
 		assert.ElementsMatch(t, test.expectedPvs, pvs)
 	}
 }
+
+// TODO tests for PV sort ordering
+// TODO move makePVS/I into main.go, call from getPathValueKey, so
+//    can call from here, then can be sure we use same key for ordering
+//    tests and production code.
