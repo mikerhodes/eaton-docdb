@@ -293,31 +293,51 @@ func (s server) lessThanLookup(path string, value interface{}) ([]string, error)
 	return ids, iter.Close()
 }
 
+// makePVS returns a path value for a string value
+func makePVS(path, value string) []byte {
+	pv := []byte(path)
+	pv = append(pv, 0)
+	pv = append(pv, JSONTagString)
+	pv = append(pv, []byte(value)...)
+	return pv
+}
+
+// makePVI returns a path value for an int value
+func makePVI(path string, value float64) []byte {
+	// This StackOverflow answer shows how to
+	// encode a float64 into a byte array that
+	// has the same sort order as the floats.
+	// https://stackoverflow.com/a/54557561
+	var buf [8]byte
+	bits := math.Float64bits(value)
+	if value >= 0 {
+		bits ^= 0x8000000000000000
+	} else {
+		bits ^= 0xffffffffffffffff
+	}
+	binary.BigEndian.PutUint64(buf[:], bits)
+
+	pv := []byte(path)
+	pv = append(pv, 0)
+	pv = append(pv, JSONTagNumber)
+	pv = append(pv, buf[:]...)
+	return pv
+}
+
 // pathValueAsKey returns a []byte key for path and value.
 func pathValueAsKey(path string, value string) []byte {
 	fmt.Printf("path: %+v, value: %+v\n", path, value)
-	pv := []byte(path)
-	pv = append(pv, 0)
 
 	// For int values, not floats for now, convert into
 	// an int64.
-	// TODO Is BigEndian right?
-	// TODO https://stackoverflow.com/a/7926429
-	// TODO tag values to ensure sorts of ints, bools, strings
 	// TODO right now this will also encode a JSON string
 	// of 45 as an int, which we shouldn't do...
 	i, err := strconv.Atoi(value)
 	if err == nil {
-		pv = append(pv, JSONTagNumber)
-		buf := make([]byte, 8)
-		binary.BigEndian.PutUint64(buf[:], math.Float64bits(float64(i)))
-		pv = append(pv, buf[:]...)
+		return makePVI(path, float64(i))
 	} else {
-		pv = append(pv, JSONTagString)
-		pv = append(pv, []byte(value)...)
+		return makePVS(path, value)
 	}
-
-	return pv
 }
 
 // pathEndKey returns a key just beyond the end of the path

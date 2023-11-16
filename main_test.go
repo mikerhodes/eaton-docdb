@@ -1,8 +1,7 @@
 package main
 
 import (
-	"encoding/binary"
-	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,24 +43,71 @@ func Test_getPath(t *testing.T) {
 	}
 }
 
-func makePVS(path, value string) []byte {
-	pv := []byte(path)
-	pv = append(pv, 0)
-	pv = append(pv, JSONTagString)
-	pv = append(pv, []byte(value)...)
-	return pv
+func Test_makePVI(t *testing.T) {
+	tests := []struct {
+		path     string
+		value    float64
+		expected []byte
+	}{
+		{"a", 12, []byte{
+			0x61,                                     // a
+			0x0,                                      // null separator
+			0x2c,                                     // JSONTagNumber
+			0xc0, 0x28, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 12
+		}},
+		{"a", 13, []byte{
+			0x61,                                     // a
+			0x0,                                      // null separator
+			0x2c,                                     // JSONTagNumber
+			0xc0, 0x2a, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 13
+		}},
+		{"a.b.c", 1234567890, []byte{
+			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
+			0x0,                                          // null separator
+			0x2c,                                         // JSONTagNumber
+			0xc1, 0xd2, 0x65, 0x80, 0xb4, 0x80, 0x0, 0x0, // float 1234567890
+		}},
+	}
+
+	for _, test := range tests {
+		got := makePVI(test.path, test.value)
+		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
+	}
 }
 
-func makePVI(path string, value int) []byte {
-	pv := []byte(path)
-	pv = append(pv, 0)
-	pv = append(pv, JSONTagNumber)
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], math.Float64bits(float64(value)))
-	pv = append(pv, buf[:]...)
-	return pv
-}
+func Test_makePVS(t *testing.T) {
+	tests := []struct {
+		path     string
+		value    string
+		expected []byte
+	}{
+		{"a", "foo", []byte{
+			0x61,             // a
+			0x0,              // null separator
+			0x2b,             // JSONTagString
+			0x66, 0x6f, 0x6f, // foo
+		}},
+		{"b", "fop", []byte{
+			0x62,             // a
+			0x0,              // null separator
+			0x2b,             // JSONTagString
+			0x66, 0x6f, 0x70, // fop
+		}},
+		{"a.b.c", "hello world Im here", []byte{
+			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
+			0x0,                                      // null separator
+			0x2b,                                     // JSONTagString
+			0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, // hello world Im here
+			0x6f, 0x72, 0x6c, 0x64, 0x20, 0x49, 0x6d,
+			0x20, 0x68, 0x65, 0x72, 0x65,
+		}},
+	}
 
+	for _, test := range tests {
+		got := makePVS(test.path, test.value)
+		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
+	}
+}
 func Test_getPathValues(t *testing.T) {
 	tests := []struct {
 		obj         map[string]any
@@ -88,6 +134,40 @@ func Test_getPathValues(t *testing.T) {
 }
 
 // TODO tests for PV sort ordering
-// TODO move makePVS/I into main.go, call from getPathValueKey, so
-//    can call from here, then can be sure we use same key for ordering
-//    tests and production code.
+func Test_makePVISort(t *testing.T) {
+	tests := []struct {
+		l float64
+		h float64
+	}{
+		{11, 12},
+		{1, 100},
+		{-1, 100},
+		{45, 4500000},
+		{-4500000, 4500000},
+	}
+	for _, test := range tests {
+		h := makePVI("a", test.h)
+		l := makePVI("a", test.l)
+		assert.True(t, slices.Compare(h, l) > 0,
+			"%v %v !> %v %v", h, test.h, test.l, l)
+	}
+}
+
+func Test_makePVSSort(t *testing.T) {
+	tests := []struct {
+		l string
+		h string
+	}{
+		{"1", "5"},
+		{"a", "b"},
+		{"foooo", "fooop"},
+		{"foooooooooooooo", "fooop"},
+		{"a whole lot of string", "a whole lot of text"},
+	}
+	for _, test := range tests {
+		h := makePVS("a", test.h)
+		l := makePVS("a", test.l)
+		assert.True(t, slices.Compare(h, l) > 0,
+			"%v %s !> %s %v", h, test.h, test.l, l)
+	}
+}
