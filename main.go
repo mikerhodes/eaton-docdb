@@ -231,9 +231,9 @@ func (s server) lookup(pathValue []byte) ([]string, error) {
 	return strings.Split(string(idsString), ","), nil
 }
 
-func (s server) greaterThanLookup(path string, value interface{}) ([]string, error) {
+func (s server) lookupGE(path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := pathValueAsKey(path, fmt.Sprintf("%v", value))
+	startKey := pathValueAsKey(path, value)
 	endKey := pathEndKey(path)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
@@ -249,10 +249,10 @@ func (s server) greaterThanLookup(path string, value interface{}) ([]string, err
 	return ids, iter.Close()
 }
 
-func (s server) lessThanLookup(path string, value interface{}) ([]string, error) {
+func (s server) lookupLT(path string, value interface{}) ([]string, error) {
 	ids := []string{}
 	startKey := pathStartKey(path)
-	endKey := pathValueAsKey(path, fmt.Sprintf("%v", value))
+	endKey := pathValueAsKey(path, value)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)
@@ -378,7 +378,7 @@ func getPathValues(obj map[string]any, prefix string) [][]byte {
 
 		pvk := pathValueAsKey(key, val)
 
-		// fmt.Printf("Added index val: %v\n", pvk)
+		fmt.Printf("Added index val: %v\n", pvk)
 
 		pvs = append(pvs, pvk)
 	}
@@ -426,14 +426,14 @@ func (s server) searchIndex(q *query) ([]string, bool, error) {
 
 			fmt.Printf("equalTo ids: %v\n", ids)
 		} else if argument.op == ">" {
-			ids, err := s.greaterThanLookup(strings.Join(argument.key, "."), argument.value)
+			ids, err := s.lookupGE(strings.Join(argument.key, "."), argument.value)
 			if err != nil {
 				return nil, false, err
 			}
 
 			fmt.Printf("greaterThan ids: %v\n", ids)
 		} else if argument.op == "<" {
-			ids, err := s.lessThanLookup(strings.Join(argument.key, "."), argument.value)
+			ids, err := s.lookupLT(strings.Join(argument.key, "."), argument.value)
 			if err != nil {
 				return nil, false, err
 			}
