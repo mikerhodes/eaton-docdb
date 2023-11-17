@@ -114,6 +114,8 @@ type query struct {
 	ands []queryComparison
 }
 
+// getValueAtPath returns the value at path parts for doc. If not found,
+// returns nil, false.
 func getValueAtPath(doc map[string]any, parts []string) (any, bool) {
 	var docSegment any = doc
 	for _, part := range parts {
