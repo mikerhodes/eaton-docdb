@@ -114,7 +114,7 @@ type query struct {
 	ands []queryComparison
 }
 
-func getPath(doc map[string]any, parts []string) (any, bool) {
+func getValueAtPath(doc map[string]any, parts []string) (any, bool) {
 	var docSegment any = doc
 	for _, part := range parts {
 		m, ok := docSegment.(map[string]any)
@@ -130,9 +130,10 @@ func getPath(doc map[string]any, parts []string) (any, bool) {
 	return docSegment, true
 }
 
+// match returns true if this query matches doc
 func (q query) match(doc map[string]any) bool {
 	for _, argument := range q.ands {
-		value, ok := getPath(doc, argument.key)
+		value, ok := getValueAtPath(doc, argument.key)
 		if !ok {
 			return false
 		}
@@ -216,7 +217,7 @@ func (s server) getDocumentById(id []byte) (map[string]any, error) {
 	return document, err
 }
 
-func (s server) lookup(pathValue []byte) ([]string, error) {
+func (s server) lookupEq(pathValue []byte) ([]string, error) {
 	idsString, closer, err := s.indexDb.Get(pathValue)
 	if err != nil && err != pebble.ErrNotFound {
 		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pathValue, err)
@@ -301,7 +302,7 @@ func (s server) lookupLE(path string, value interface{}) ([]string, error) {
 	// For less than or equal to, we have to explicitly do the
 	// equal to search, as UpperBound is exclusive so doesn't
 	// include equalTo.
-	eqs, err := s.lookup(startKey)
+	eqs, err := s.lookupEq(startKey)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +473,7 @@ func (s server) searchIndex(q *query) ([]string, bool, error) {
 			)
 			// fmt.Printf("Lookup val: %v\n", pvk)
 
-			ids, err := s.lookup(pvk)
+			ids, err := s.lookupEq(pvk)
 			if err != nil {
 				return nil, false, err
 			}

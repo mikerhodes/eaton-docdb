@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_getPath(t *testing.T) {
+func Test_getValueAtPath(t *testing.T) {
 	tests := []struct {
 		object        map[string]any
 		path          []string
@@ -37,7 +37,7 @@ func Test_getPath(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		v, ok := getPath(test.object, test.path)
+		v, ok := getValueAtPath(test.object, test.path)
 		assert.Equal(t, test.expectedValue, v)
 		assert.Equal(t, test.expectedOk, ok)
 	}
@@ -291,19 +291,19 @@ func Test_simpleSearch(t *testing.T) {
 		},
 	)
 
-	ids, _ := s.lookup(makePVS("name", "mike"))
+	ids, _ := s.lookupEq(makePVS("name", "mike"))
 	assert.ElementsMatch(t, []string{"mike"}, ids)
-	ids, _ = s.lookup(makePVS("name", "fred"))
+	ids, _ = s.lookupEq(makePVS("name", "fred"))
 	assert.ElementsMatch(t, []string{}, ids)
 
-	ids, _ = s.lookup(makePVI("age", 40))
+	ids, _ = s.lookupEq(makePVI("age", 40))
 	assert.ElementsMatch(t, []string{"mike"}, ids)
-	ids, _ = s.lookup(makePVS("age", "mike"))
+	ids, _ = s.lookupEq(makePVS("age", "mike"))
 	assert.ElementsMatch(t, []string{}, ids)
-	ids, _ = s.lookup(makePVS("age", "40"))
+	ids, _ = s.lookupEq(makePVS("age", "40"))
 	assert.ElementsMatch(t, []string{}, ids)
 
-	ids, _ = s.lookup(makePVS("pet", "cat"))
+	ids, _ = s.lookupEq(makePVS("pet", "cat"))
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
 }
 
