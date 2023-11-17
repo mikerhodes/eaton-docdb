@@ -242,3 +242,40 @@ func Test_PVSortTypes(t *testing.T) {
 	assert.True(t, slices.Compare(makePVI(p, 1234), makePVS(p, "1234")) < 0,
 		"number should be less than string")
 }
+
+func Test_simpleSearch(t *testing.T) {
+	d := t.TempDir()
+	s, err := newServer(d)
+	if err != nil {
+		assert.FailNow(t, "Could not create s")
+	}
+	s.addDocument("mike",
+		map[string]any{
+			"name": "mike",
+			"age":  40,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("phil",
+		map[string]any{
+			"name": "phil",
+			"age":  30,
+			"pet":  "cat",
+		},
+	)
+
+	ids, _ := s.lookup(makePVS("name", "mike"))
+	assert.ElementsMatch(t, []string{"mike"}, ids)
+	ids, _ = s.lookup(makePVS("name", "fred"))
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = s.lookup(makePVI("age", 40))
+	assert.ElementsMatch(t, []string{"mike"}, ids)
+	ids, _ = s.lookup(makePVS("age", "mike"))
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.lookup(makePVS("age", "40"))
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = s.lookup(makePVS("pet", "cat"))
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+}
