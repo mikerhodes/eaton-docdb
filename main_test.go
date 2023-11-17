@@ -108,6 +108,64 @@ func Test_makePVS(t *testing.T) {
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
+
+func Test_makePVB(t *testing.T) {
+	tests := []struct {
+		path     string
+		value    bool
+		expected []byte
+	}{
+		{"a", true, []byte{
+			0x61, // a
+			0x0,  // null separator
+			0x28, // JSONTagTrue
+		}},
+		{"b", false, []byte{
+			0x62, // a
+			0x0,  // null separator
+			0x29, // JSONTagFalse
+		}},
+		{"a.b.c", false, []byte{
+			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
+			0x0,  // null separator
+			0x29, // JSONTagFalse
+		}},
+	}
+
+	for _, test := range tests {
+		got := makePVB(test.path, test.value)
+		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
+	}
+}
+
+func Test_makePVN(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected []byte
+	}{
+		{"a", []byte{
+			0x61, // a
+			0x0,  // null separator
+			0x2a, // JSONTagNull
+		}},
+		{"b", []byte{
+			0x62, // a
+			0x0,  // null separator
+			0x2a, // JSONTagNull
+		}},
+		{"a.b.c", []byte{
+			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
+			0x0,  // null separator
+			0x2a, // JSONTagNull
+		}},
+	}
+
+	for _, test := range tests {
+		got := makePVN(test.path)
+		assert.Equal(t, test.expected, got, "%s=%s", test.path, nil)
+	}
+}
+
 func Test_getPathValues(t *testing.T) {
 	tests := []struct {
 		obj         map[string]any

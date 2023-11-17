@@ -20,11 +20,12 @@ import (
 // values in pathValues for keys to
 // ensure sort ordering.
 const (
-	JSONTagTrue = iota + 40 // printable character makes easier debugging
-	JSONTagFalse
-	JSONTagNull
-	JSONTagString // +
-	JSONTagNumber // ,
+	// printable character makes easier debugging
+	JSONTagTrue   = iota + 40 // (
+	JSONTagFalse              // )
+	JSONTagNull               // *
+	JSONTagString             // +
+	JSONTagNumber             // ,
 )
 
 type server struct {
@@ -299,6 +300,25 @@ func makePVS(path, value string) []byte {
 	pv = append(pv, 0)
 	pv = append(pv, JSONTagString)
 	pv = append(pv, []byte(value)...)
+	return pv
+}
+
+// makePVB returns a path value for a boolean value
+func makePVB(path string, value bool) []byte {
+	pv := []byte(path)
+	pv = append(pv, 0)
+	if value {
+		pv = append(pv, JSONTagTrue)
+	} else {
+		pv = append(pv, JSONTagFalse)
+	}
+	return pv
+}
+
+func makePVN(path string) []byte {
+	pv := []byte(path)
+	pv = append(pv, 0)
+	pv = append(pv, JSONTagNull)
 	return pv
 }
 
