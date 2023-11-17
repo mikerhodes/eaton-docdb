@@ -21,11 +21,11 @@ import (
 // ensure sort ordering.
 const (
 	// printable character makes easier debugging
-	JSONTagTrue   = iota + 40 // (
-	JSONTagFalse              // )
-	JSONTagNull               // *
-	JSONTagString             // +
-	JSONTagNumber             // ,
+	JSONTagNull   = iota + 40 // 0x28 (
+	JSONTagFalse              // 0x29 )
+	JSONTagTrue               // 0x2a *
+	JSONTagNumber             // 0x2b +
+	JSONTagString             // 0x2c ,
 )
 
 type server struct {

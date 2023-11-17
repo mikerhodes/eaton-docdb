@@ -52,19 +52,19 @@ func Test_makePVI(t *testing.T) {
 		{"a", 12, []byte{
 			0x61,                                     // a
 			0x0,                                      // null separator
-			0x2c,                                     // JSONTagNumber
+			0x2b,                                     // JSONTagNumber
 			0xc0, 0x28, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 12
 		}},
 		{"a", 13, []byte{
 			0x61,                                     // a
 			0x0,                                      // null separator
-			0x2c,                                     // JSONTagNumber
+			0x2b,                                     // JSONTagNumber
 			0xc0, 0x2a, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 13
 		}},
 		{"a.b.c", 1234567890, []byte{
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,                                          // null separator
-			0x2c,                                         // JSONTagNumber
+			0x2b,                                         // JSONTagNumber
 			0xc1, 0xd2, 0x65, 0x80, 0xb4, 0x80, 0x0, 0x0, // float 1234567890
 		}},
 	}
@@ -84,19 +84,19 @@ func Test_makePVS(t *testing.T) {
 		{"a", "foo", []byte{
 			0x61,             // a
 			0x0,              // null separator
-			0x2b,             // JSONTagString
+			0x2c,             // JSONTagString
 			0x66, 0x6f, 0x6f, // foo
 		}},
 		{"b", "fop", []byte{
 			0x62,             // a
 			0x0,              // null separator
-			0x2b,             // JSONTagString
+			0x2c,             // JSONTagString
 			0x66, 0x6f, 0x70, // fop
 		}},
 		{"a.b.c", "hello world Im here", []byte{
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,                                      // null separator
-			0x2b,                                     // JSONTagString
+			0x2c,                                     // JSONTagString
 			0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, // hello world Im here
 			0x6f, 0x72, 0x6c, 0x64, 0x20, 0x49, 0x6d,
 			0x20, 0x68, 0x65, 0x72, 0x65,
@@ -118,7 +118,7 @@ func Test_makePVB(t *testing.T) {
 		{"a", true, []byte{
 			0x61, // a
 			0x0,  // null separator
-			0x28, // JSONTagTrue
+			0x2a, // JSONTagTrue
 		}},
 		{"b", false, []byte{
 			0x62, // a
@@ -146,17 +146,17 @@ func Test_makePVN(t *testing.T) {
 		{"a", []byte{
 			0x61, // a
 			0x0,  // null separator
-			0x2a, // JSONTagNull
+			0x28, // JSONTagNull
 		}},
 		{"b", []byte{
 			0x62, // a
 			0x0,  // null separator
-			0x2a, // JSONTagNull
+			0x28, // JSONTagNull
 		}},
 		{"a.b.c", []byte{
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,  // null separator
-			0x2a, // JSONTagNull
+			0x28, // JSONTagNull
 		}},
 	}
 
@@ -228,4 +228,17 @@ func Test_makePVSSort(t *testing.T) {
 		assert.True(t, slices.Compare(h, l) > 0,
 			"%v %s !> %s %v", h, test.h, test.l, l)
 	}
+}
+
+// Check against the CouchDB collation order.
+func Test_PVSortTypes(t *testing.T) {
+	p := "a.b.c"
+	assert.True(t, slices.Compare(makePVN(p), makePVB(p, false)) < 0,
+		"null should be less than false")
+	assert.True(t, slices.Compare(makePVB(p, false), makePVB(p, true)) < 0,
+		"false should be less than true")
+	assert.True(t, slices.Compare(makePVB(p, true), makePVI(p, 1234)) < 0,
+		"true should be less than number")
+	assert.True(t, slices.Compare(makePVI(p, 1234), makePVS(p, "1234")) < 0,
+		"number should be less than string")
 }
