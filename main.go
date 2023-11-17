@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -249,10 +250,62 @@ func (s server) lookupGE(path string, value interface{}) ([]string, error) {
 	return ids, iter.Close()
 }
 
+func (s server) lookupGT(path string, value interface{}) ([]string, error) {
+	ids := []string{}
+	startKey := pathValueAsKey(path, value)
+	endKey := pathEndKey(path)
+
+	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+	fmt.Printf("greaterThan: %+v\n", readOptions)
+
+	iter := s.indexDb.NewIter(readOptions)
+	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
+		// As LowerBound is inclusive, we need to skip over
+		// entries at startKey to get greater than semantics.
+		if slices.Compare(startKey, iter.Key()) == 0 {
+			continue
+		}
+		fmt.Printf("key=%+v value=%+v\n", iter.Key(), iter.Value())
+		ids = append(
+			ids,
+			strings.Split(string(iter.Value()), ",")...)
+	}
+	return ids, iter.Close()
+}
+
 func (s server) lookupLT(path string, value interface{}) ([]string, error) {
+	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
 	startKey := pathStartKey(path)
 	endKey := pathValueAsKey(path, value)
+
+	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+	fmt.Printf("lessThan: %+v\n", readOptions)
+
+	iter := s.indexDb.NewIter(readOptions)
+	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
+		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		ids = append(
+			ids,
+			strings.Split(string(iter.Value()), ",")...)
+	}
+	return ids, iter.Close()
+}
+
+func (s server) lookupLE(path string, value interface{}) ([]string, error) {
+	// We could use iter.Prev() to get the descending ordering
+	ids := []string{}
+	startKey := pathStartKey(path)
+	endKey := pathValueAsKey(path, value)
+
+	// For less than or equal to, we have to explicitly do the
+	// equal to search, as UpperBound is exclusive so doesn't
+	// include equalTo.
+	eqs, err := s.lookup(startKey)
+	if err != nil {
+		return nil, err
+	}
+	ids = append(ids, eqs...)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)

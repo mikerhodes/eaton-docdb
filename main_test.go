@@ -368,6 +368,67 @@ func Test_lookupGE(t *testing.T) {
 	assert.ElementsMatch(t, []string{}, ids)
 }
 
+func Test_lookupGT(t *testing.T) {
+	d := t.TempDir()
+	s, err := newServer(d)
+	if err != nil {
+		assert.FailNow(t, "Could not create s")
+	}
+	s.addDocument("mike",
+		map[string]any{
+			"name": "mike",
+			"age":  40,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("phil",
+		map[string]any{
+			"name": "phil",
+			"age":  30,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("funny",
+		map[string]any{
+			"name": 1,
+			"age":  nil,
+			"pet":  false,
+		},
+	)
+
+	var ids []string
+
+	ids, _ = s.lookupGT("name", "mike")
+	assert.ElementsMatch(t, []string{"phil"}, ids)
+	ids, _ = s.lookupGT("name", "ned")
+	assert.ElementsMatch(t, []string{"phil"}, ids)
+	ids, _ = s.lookupGT("name", "tom")
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.lookupGT("name", 1234)
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+	ids, _ = s.lookupGT("name", true)
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+
+	ids, _ = s.lookupGT("age", 20)
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+	ids, _ = s.lookupGT("age", 40)
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.lookupGT("age", 400)
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.lookupGT("age", "mike")
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.lookupGT("age", "40")
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = s.lookupGT("pet", "cat")
+	assert.ElementsMatch(t, []string{}, ids)
+
+	// Check we don't bleed into other fields greater than this one
+	// Ie, age < name in the byte array prefixes
+	ids, _ = s.lookupGT("age", 400000)
+	assert.ElementsMatch(t, []string{}, ids)
+}
+
 func Test_lookupLT(t *testing.T) {
 	d := t.TempDir()
 	s, err := newServer(d)
