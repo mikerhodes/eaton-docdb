@@ -243,6 +243,33 @@ func Test_PVSortTypes(t *testing.T) {
 		"number should be less than string")
 }
 
+func Test_pathValueAsKey(t *testing.T) {
+	// pathvalueaskey is a shorthand to get the right makePV*, so we
+	// can compare against the known-good results for those lower level
+	// methods.
+	assert.True(t,
+		slices.Compare(makePVN("a"), pathValueAsKey("a", nil)) == 0,
+		"Failed for null",
+	)
+	assert.True(t,
+		slices.Compare(makePVB("a", false), pathValueAsKey("a", false)) == 0,
+		"Failed for false",
+	)
+	assert.True(t,
+		slices.Compare(makePVB("a", true), pathValueAsKey("a", true)) == 0,
+		"Failed for true",
+	)
+	assert.True(t,
+		slices.Compare(makePVI("a", 1234), pathValueAsKey("a", 1234)) == 0,
+		"Failed for number",
+	)
+	assert.True(t,
+		slices.Compare(makePVS("a", "b"), pathValueAsKey("a", "b")) == 0,
+		"Failed for string",
+	)
+
+}
+
 func Test_simpleSearch(t *testing.T) {
 	d := t.TempDir()
 	s, err := newServer(d)
@@ -277,5 +304,46 @@ func Test_simpleSearch(t *testing.T) {
 	assert.ElementsMatch(t, []string{}, ids)
 
 	ids, _ = s.lookup(makePVS("pet", "cat"))
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+}
+
+func ignoreTest_lookupGE(t *testing.T) {
+	d := t.TempDir()
+	s, err := newServer(d)
+	if err != nil {
+		assert.FailNow(t, "Could not create s")
+	}
+	s.addDocument("mike",
+		map[string]any{
+			"name": "mike",
+			"age":  40,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("phil",
+		map[string]any{
+			"name": "phil",
+			"age":  30,
+			"pet":  "cat",
+		},
+	)
+
+	ids, _ := s.greaterThanLookup("name", "mike")
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+	ids, _ = s.greaterThanLookup("name", "tom")
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = s.greaterThanLookup("age", 20)
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+	ids, _ = s.greaterThanLookup("age", 40)
+	assert.ElementsMatch(t, []string{"mike"}, ids)
+	ids, _ = s.greaterThanLookup("age", 400)
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.greaterThanLookup("age", "mike")
+	assert.ElementsMatch(t, []string{}, ids)
+	ids, _ = s.greaterThanLookup("age", "40")
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = s.greaterThanLookup("pet", "cat")
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
 }

@@ -45,33 +45,6 @@ func newServer(database string) (*server, error) {
 	return &s, err
 }
 
-// Ignores arrays
-func getPathValues(obj map[string]any, prefix string) [][]byte {
-	var pvs [][]byte
-	for key, val := range obj {
-		switch t := val.(type) {
-		case map[string]any:
-			pvs = append(pvs, getPathValues(t, key)...)
-			continue
-		case []interface{}:
-			// Can't handle arrays
-			continue
-		}
-
-		if prefix != "" {
-			key = prefix + "." + key
-		}
-
-		pvk := pathValueAsKey(key, fmt.Sprintf("%v", val))
-
-		fmt.Printf("Added index val: %v\n", pvk)
-
-		pvs = append(pvs, pvk)
-	}
-
-	return pvs
-}
-
 func (s server) index(id string, document map[string]any) {
 	pv := getPathValues(document, "")
 
@@ -345,19 +318,72 @@ func makePVI(path string, value float64) []byte {
 }
 
 // pathValueAsKey returns a []byte key for path and value.
-func pathValueAsKey(path string, value string) []byte {
-	fmt.Printf("path: %+v, value: %+v\n", path, value)
+func pathValueAsKey(path string, value interface{}) []byte {
+	// fmt.Printf("path: %+v, value: %+v\n", path, value)
 
-	// For int values, not floats for now, convert into
-	// an int64.
-	// TODO right now this will also encode a JSON string
-	// of 45 as an int, which we shouldn't do...
-	i, err := strconv.Atoi(value)
-	if err == nil {
-		return makePVI(path, float64(i))
-	} else {
-		return makePVS(path, value)
+	switch t := value.(type) {
+	case nil:
+		return makePVN(path)
+	case bool:
+		return makePVB(path, t)
+	case float64:
+		return makePVI(path, float64(t))
+	case float32:
+		return makePVI(path, float64(t))
+	case uint:
+		return makePVI(path, float64(t))
+	case uint8:
+		return makePVI(path, float64(t))
+	case uint16:
+		return makePVI(path, float64(t))
+	case uint32:
+		return makePVI(path, float64(t))
+	case uint64:
+		return makePVI(path, float64(t))
+	case int:
+		return makePVI(path, float64(t))
+	case int8:
+		return makePVI(path, float64(t))
+	case int16:
+		return makePVI(path, float64(t))
+	case int32:
+		return makePVI(path, float64(t))
+	case int64:
+		return makePVI(path, float64(t))
+	case string:
+		return makePVS(path, value.(string))
+	default:
+		// This should never happen from value JSON
+		log.Printf("Unexpected type in pathValueAsKey: %+v\n", value)
+		panic(1)
 	}
+}
+
+// Ignores arrays
+func getPathValues(obj map[string]any, prefix string) [][]byte {
+	var pvs [][]byte
+	for key, val := range obj {
+		switch t := val.(type) {
+		case map[string]any:
+			pvs = append(pvs, getPathValues(t, key)...)
+			continue
+		case []interface{}:
+			// Can't handle arrays
+			continue
+		}
+
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+
+		pvk := pathValueAsKey(key, val)
+
+		// fmt.Printf("Added index val: %v\n", pvk)
+
+		pvs = append(pvs, pvk)
+	}
+
+	return pvs
 }
 
 // pathEndKey returns a key just beyond the end of the path
@@ -391,7 +417,7 @@ func (s server) searchIndex(q *query) ([]string, bool, error) {
 				strings.Join(argument.key, "."),
 				argument.value,
 			)
-			fmt.Printf("Lookup val: %v\n", pvk)
+			// fmt.Printf("Lookup val: %v\n", pvk)
 
 			ids, err := s.lookup(pvk)
 			if err != nil {
