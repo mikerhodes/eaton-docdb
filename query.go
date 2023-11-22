@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"slices"
 	"strings"
 
@@ -64,7 +65,9 @@ func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 }
 
 func lookupEq(indexDb *pebble.DB, pathValue []byte) ([]string, error) {
-	idsString, closer, err := indexDb.Get(pathValue)
+	indexKey := invIdxKey(pathValue)
+	log.Printf("lookupEq: %v", indexKey)
+	idsString, closer, err := indexDb.Get(indexKey)
 	if err != nil && err != pebble.ErrNotFound {
 		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pathValue, err)
 	}
@@ -81,8 +84,8 @@ func lookupEq(indexDb *pebble.DB, pathValue []byte) ([]string, error) {
 
 func lookupGE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := pathValueAsKey(path, value)
-	endKey := pathEndKey(path)
+	startKey := invIdxKey(pathValueAsKey(path, value))
+	endKey := invIdxKey(pathEndKey(path))
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("greaterThan: %+v\n", readOptions)
@@ -99,8 +102,8 @@ func lookupGE(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 
 func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := pathValueAsKey(path, value)
-	endKey := pathEndKey(path)
+	startKey := invIdxKey(pathValueAsKey(path, value))
+	endKey := invIdxKey(pathEndKey(path))
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("greaterThan: %+v\n", readOptions)
@@ -123,8 +126,8 @@ func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 func lookupLT(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
-	startKey := pathStartKey(path)
-	endKey := pathValueAsKey(path, value)
+	startKey := invIdxKey(pathStartKey(path))
+	endKey := invIdxKey(pathValueAsKey(path, value))
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)
@@ -142,8 +145,8 @@ func lookupLT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 func lookupLE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
-	startKey := pathStartKey(path)
-	endKey := pathValueAsKey(path, value)
+	startKey := invIdxKey(pathStartKey(path))
+	endKey := invIdxKey(pathValueAsKey(path, value))
 
 	// For less than or equal to, we have to explicitly do the
 	// equal to search, as UpperBound is exclusive so doesn't
