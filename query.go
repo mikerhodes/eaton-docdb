@@ -171,23 +171,21 @@ func lookupLE(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 }
 
 // pathEndKey returns a key just beyond the end of the path
-// This relies on the fact that no-one will likely use
-// value 1 in a field name, "Start of Header" character.
 func pathEndKey(path string) []byte {
+	// A path's key looks like, for "foo":
+	// []byte{102, 111, 111, 0, ... value bytes}
+	// to make a key that falls "after" this path foo, place
+	// a 1 where the separator would be (1 is always above 0):
+	// []byte{102, 111, 111, 1}
+	// This relies on the fact that no-one will likely use
+	// value 1 in a field name, "Start of Header" character.
 	k := []byte(path)
-	pathValue := make([]byte, len(k)+1)
-	copy(pathValue[0:], k[0:])
-	pathValue[len(k)] = 1 // ie, above the \0 separator
-	return pathValue
+	return append(k, 1)
 }
 
 // pathStartKey returns a key that is the lowest that
 // path could have.
 func pathStartKey(path string) []byte {
 	k := []byte(path)
-	pathValue := make([]byte, len(k)+1)
-	copy(pathValue[0:], k[0:])
-	pathValue[len(k)] = 0
-	return pathValue
-
+	return append(k, 0)
 }
