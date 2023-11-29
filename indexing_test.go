@@ -59,12 +59,12 @@ func Test_unindex(t *testing.T) {
 	index(db, "doc2", doc)
 	index(db, "doc3", doc)
 
-	ids, _ := lookupEq(db, makePVI("a.b", 1))
+	ids, _ := lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc1", "doc2", "doc3"}, ids)
 
 	unindex(db, "doc1")
 
-	ids, _ = lookupEq(db, makePVI("a.b", 1))
+	ids, _ = lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc2", "doc3"}, ids)
 }
 
@@ -83,7 +83,7 @@ func Test_reindex(t *testing.T) {
 	index(db, "doc2", doc)
 	index(db, "doc3", doc)
 
-	ids, _ := lookupEq(db, makePVI("a.b", 1))
+	ids, _ := lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc1", "doc2", "doc3"}, ids)
 
 	doc2 := map[string]any{
@@ -93,8 +93,8 @@ func Test_reindex(t *testing.T) {
 	}
 	index(db, "doc2", doc2)
 
-	ids, _ = lookupEq(db, makePVI("a.b", 1))
+	ids, _ = lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc1", "doc3"}, ids)
-	ids, _ = lookupEq(db, makePVI("a.c", 2))
+	ids, _ = lookupEq(db, "a.c", 2)
 	assert.ElementsMatch(t, []string{"doc2"}, ids)
 }

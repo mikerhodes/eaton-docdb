@@ -62,19 +62,19 @@ func Test_simpleSearch(t *testing.T) {
 		},
 	)
 
-	ids, _ := lookupEq(s.indexDb, makePVS("name", "mike"))
+	ids, _ := lookupEq(s.indexDb, "name", "mike")
 	assert.ElementsMatch(t, []string{"mike"}, ids)
-	ids, _ = lookupEq(s.indexDb, makePVS("name", "fred"))
+	ids, _ = lookupEq(s.indexDb, "name", "fred")
 	assert.ElementsMatch(t, []string{}, ids)
 
-	ids, _ = lookupEq(s.indexDb, makePVI("age", 40))
+	ids, _ = lookupEq(s.indexDb, "age", 40)
 	assert.ElementsMatch(t, []string{"mike"}, ids)
-	ids, _ = lookupEq(s.indexDb, makePVS("age", "mike"))
+	ids, _ = lookupEq(s.indexDb, "age", "mike")
 	assert.ElementsMatch(t, []string{}, ids)
-	ids, _ = lookupEq(s.indexDb, makePVS("age", "40"))
+	ids, _ = lookupEq(s.indexDb, "age", "40")
 	assert.ElementsMatch(t, []string{}, ids)
 
-	ids, _ = lookupEq(s.indexDb, makePVS("pet", "cat"))
+	ids, _ = lookupEq(s.indexDb, "pet", "cat")
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
 }
 

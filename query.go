@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -9,40 +10,43 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
+type queryComparison struct {
+	key   []string
+	value interface{}
+	op    string
+}
+
+type query struct {
+	ands []queryComparison
+}
+
 // searchIndex returns IDs matching q.
 func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 	idsArgumentCount := map[string]int{}
-	nonRangeArguments := 0
+	indexLookupCount := 0
+
 	for _, argument := range q.ands {
+		dottedPath := strings.Join(argument.key, ".")
+
 		var ids []string
+		var err error
 		if argument.op == "=" {
-			pvk := pathValueAsKey(
-				strings.Join(argument.key, "."),
-				argument.value,
-			)
-			// fmt.Printf("Lookup val: %v\n", pvk)
-
-			ids, err := lookupEq(indexDb, pvk)
-			if err != nil {
-				return nil, err
-			}
-
-			fmt.Printf("equalTo ids: %v\n", ids)
+			ids, err = lookupEq(indexDb, dottedPath, argument.value)
 		} else if argument.op == ">" {
-			ids, err := lookupGE(indexDb, strings.Join(argument.key, "."), argument.value)
-			if err != nil {
-				return nil, err
-			}
-
-			fmt.Printf("greaterThan ids: %v\n", ids)
+			ids, err = lookupGT(indexDb, dottedPath, argument.value)
 		} else if argument.op == "<" {
-			ids, err := lookupLT(indexDb, strings.Join(argument.key, "."), argument.value)
-			if err != nil {
-				return nil, err
-			}
-
-			fmt.Printf("lessThan ids: %v\n", ids)
+			ids, err = lookupLT(indexDb, dottedPath, argument.value)
+		} else {
+			return nil, errors.New(
+				fmt.Sprintf("Unrecognised op %s in query %v", argument.op, q),
+			)
 		}
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("op %s ids: %v", argument.op, ids)
+
+		indexLookupCount += 1
 
 		for _, id := range ids {
 			_, ok := idsArgumentCount[id]
@@ -56,7 +60,7 @@ func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 
 	var idsInAll []string
 	for id, count := range idsArgumentCount {
-		if count == nonRangeArguments {
+		if count == indexLookupCount {
 			idsInAll = append(idsInAll, id)
 		}
 	}
@@ -64,12 +68,13 @@ func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 	return idsInAll, nil
 }
 
-func lookupEq(indexDb *pebble.DB, pathValue []byte) ([]string, error) {
-	indexKey := invIdxKey(pathValue)
+func lookupEq(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
+	pvk := pathValueAsKey(path, value)
+	indexKey := invIdxKey(pvk)
 	log.Printf("lookupEq: %v", indexKey)
 	idsString, closer, err := indexDb.Get(indexKey)
 	if err != nil && err != pebble.ErrNotFound {
-		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pathValue, err)
+		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pvk, err)
 	}
 	if closer != nil {
 		defer closer.Close()
@@ -151,7 +156,7 @@ func lookupLE(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 	// For less than or equal to, we have to explicitly do the
 	// equal to search, as UpperBound is exclusive so doesn't
 	// include equalTo.
-	eqs, err := lookupEq(indexDb, startKey)
+	eqs, err := lookupEq(indexDb, path, value)
 	if err != nil {
 		return nil, err
 	}

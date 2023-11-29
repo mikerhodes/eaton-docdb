@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/cockroachdb/pebble"
 	// "github.com/google/uuid"
@@ -91,62 +89,52 @@ func (s server) reindex() {
 	}
 }
 
-func (s server) searchDocuments(q *query, skipIndex bool) (map[string]interface{}, error) {
+// func (s server) searchDocuments(q *query, skipIndex bool) (map[string]interface{}, error) {
 
-	var idsInAll []string = nil
-	isRange := false
+// 	var idsInAll []string = nil
+// 	isRange := false
 
-	if !skipIndex {
-		idsInAll, _ = searchIndex(s.indexDb, q)
-	}
+// 	if !skipIndex {
+// 		idsInAll, _ = searchIndex(s.indexDb, q)
+// 	}
 
-	var documents []any
+// 	var documents []any
 
-	if len(idsInAll) > 0 {
-		for _, id := range idsInAll {
-			document, err := s.getDocumentById([]byte(id))
-			if err != nil {
-				return nil, err
-			}
+// 	if len(idsInAll) > 0 {
+// 		for _, id := range idsInAll {
+// 			document, err := s.getDocumentById([]byte(id))
+// 			if err != nil {
+// 				return nil, err
+// 			}
 
-			if !isRange || q.match(document) {
-				documents = append(documents, map[string]any{
-					"id":   id,
-					"body": document,
-				})
-			}
-		}
-	} else {
-		iter := s.db.NewIter(nil)
-		defer iter.Close()
-		for iter.First(); iter.Valid(); iter.Next() {
-			var document map[string]any
-			err := json.Unmarshal(iter.Value(), &document)
-			if err != nil {
-				return nil, err
-			}
+// 			if !isRange || q.match(document) {
+// 				documents = append(documents, map[string]any{
+// 					"id":   id,
+// 					"body": document,
+// 				})
+// 			}
+// 		}
+// 	} else {
+// 		iter := s.db.NewIter(nil)
+// 		defer iter.Close()
+// 		for iter.First(); iter.Valid(); iter.Next() {
+// 			var document map[string]any
+// 			err := json.Unmarshal(iter.Value(), &document)
+// 			if err != nil {
+// 				return nil, err
+// 			}
 
-			if q.match(document) {
-				documents = append(documents, map[string]any{
-					"id":   string(iter.Key()),
-					"body": document,
-				})
-			}
-		}
-	}
+// 			if q.match(document) {
+// 				documents = append(documents, map[string]any{
+// 					"id":   string(iter.Key()),
+// 					"body": document,
+// 				})
+// 			}
+// 		}
+// 	}
 
-	return map[string]any{"documents": documents, "count": len(documents)}, nil
-}
-
-type queryComparison struct {
-	key   []string
-	value string
-	op    string
-}
-
-type query struct {
-	ands []queryComparison
-}
+// 	return map[string]any{"documents": documents, "count": len(documents)}, nil
+// }
 
 // getValueAtPath returns the value at path parts for doc. If not found,
 // returns nil, false.
@@ -167,79 +155,79 @@ func getValueAtPath(doc map[string]any, parts []string) (any, bool) {
 }
 
 // match returns true if this query q matches doc
-func (q query) match(doc map[string]any) bool {
-	for _, argument := range q.ands {
-		value, ok := getValueAtPath(doc, argument.key)
-		if !ok {
-			return false
-		}
+// func (q query) match(doc map[string]any) bool {
+// 	for _, argument := range q.ands {
+// 		value, ok := getValueAtPath(doc, argument.key)
+// 		if !ok {
+// 			return false
+// 		}
 
-		// Handle equality
-		if argument.op == "=" {
-			match := fmt.Sprintf("%v", value) == argument.value
-			if !match {
-				return false
-			}
+// 		// Handle equality
+// 		if argument.op == "=" {
+// 			match := fmt.Sprintf("%v", value) == argument.value
+// 			if !match {
+// 				return false
+// 			}
 
-			continue
-		}
+// 			continue
+// 		}
 
-		// Handle <, >
-		right, err := strconv.ParseFloat(argument.value, 64)
-		if err != nil {
-			return false
-		}
+// 		// Handle <, >
+// 		right, err := strconv.ParseFloat(argument.value, 64)
+// 		if err != nil {
+// 			return false
+// 		}
 
-		var left float64
-		switch t := value.(type) {
-		case float64:
-			left = t
-		case float32:
-			left = float64(t)
-		case uint:
-			left = float64(t)
-		case uint8:
-			left = float64(t)
-		case uint16:
-			left = float64(t)
-		case uint32:
-			left = float64(t)
-		case uint64:
-			left = float64(t)
-		case int:
-			left = float64(t)
-		case int8:
-			left = float64(t)
-		case int16:
-			left = float64(t)
-		case int32:
-			left = float64(t)
-		case int64:
-			left = float64(t)
-		case string:
-			left, err = strconv.ParseFloat(t, 64)
-			if err != nil {
-				return false
-			}
-		default:
-			return false
-		}
+// 		var left float64
+// 		switch t := value.(type) {
+// 		case float64:
+// 			left = t
+// 		case float32:
+// 			left = float64(t)
+// 		case uint:
+// 			left = float64(t)
+// 		case uint8:
+// 			left = float64(t)
+// 		case uint16:
+// 			left = float64(t)
+// 		case uint32:
+// 			left = float64(t)
+// 		case uint64:
+// 			left = float64(t)
+// 		case int:
+// 			left = float64(t)
+// 		case int8:
+// 			left = float64(t)
+// 		case int16:
+// 			left = float64(t)
+// 		case int32:
+// 			left = float64(t)
+// 		case int64:
+// 			left = float64(t)
+// 		case string:
+// 			left, err = strconv.ParseFloat(t, 64)
+// 			if err != nil {
+// 				return false
+// 			}
+// 		default:
+// 			return false
+// 		}
 
-		if argument.op == ">" {
-			if left <= right {
-				return false
-			}
+// 		if argument.op == ">" {
+// 			if left <= right {
+// 				return false
+// 			}
 
-			continue
-		}
+// 			continue
+// 		}
 
-		if left >= right {
-			return false
-		}
-	}
+// 		if left >= right {
+// 			return false
+// 		}
+// 	}
 
-	return true
-}
+// 	return true
+// }
 
 func main() {
 	s, err := newServer("docdb.data")
