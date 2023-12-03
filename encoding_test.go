@@ -161,27 +161,31 @@ func Test_getPathValues(t *testing.T) {
 	}
 }
 
-// TODO tests for PV sort ordering
-func Test_makeNumberSort(t *testing.T) {
-	tests := []struct {
-		l float64
-		h float64
-	}{
-		{11, 12},
-		{1, 100},
-		{-1, 100},
-		{45, 4500000},
-		{-4500000, 4500000},
-		{11.9, 12},
-		{-123.23, 123},
-		{123.23, 123.25},
-	}
-	for _, test := range tests {
-		h := pathValueAsKey("a", test.h)
-		l := pathValueAsKey("a", test.l)
-		assert.True(t, slices.Compare(h, l) > 0,
-			"%v %v !> %v %v", h, test.h, test.l, l)
-	}
+// fuzz test the ordering of our number encoding. Running
+// a million combinations gives more confidence about the
+// code I found on StackOverflow for byte encoding numbers
+// in a way that maintains their ordering.
+func Fuzz_fuzzNumberSort(f *testing.F) {
+	f.Add(11.0, 12.0)
+	f.Add(1.0, 100.0)
+	f.Add(-1.0, 100.0)
+	f.Add(45.0, 4500000.0)
+	f.Add(-4500000.0, 4500000.0)
+	f.Add(11.9, 12.0)
+	f.Add(-123.23, 123.0)
+	f.Add(123.23, 123.25)
+	f.Add(123.123, 123.123)
+	f.Fuzz(func(t *testing.T, a, b float64) {
+		h := pathValueAsKey("a", a)
+		l := pathValueAsKey("a", b)
+		if a > b {
+			assert.True(t, slices.Compare(h, l) > 0)
+		} else if a < b {
+			assert.True(t, slices.Compare(h, l) < 0)
+		} else {
+			assert.True(t, slices.Compare(h, l) == 0)
+		}
+	})
 }
 
 func Test_makeStringSort(t *testing.T) {
