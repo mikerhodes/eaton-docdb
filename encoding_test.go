@@ -31,6 +31,12 @@ func Test_makePVI(t *testing.T) {
 			0x2b,                                         // JSONTagNumber
 			0xc1, 0xd2, 0x65, 0x80, 0xb4, 0x80, 0x0, 0x0, // float 1234567890
 		}},
+		{"a.b.c", -1, []byte{
+			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
+			0x0,                                            // null separator
+			0x2b,                                           // JSONTagNumber
+			0x40, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // float 1234567890
+		}},
 	}
 
 	for _, test := range tests {
@@ -166,6 +172,9 @@ func Test_makePVISort(t *testing.T) {
 		{-1, 100},
 		{45, 4500000},
 		{-4500000, 4500000},
+		{11.9, 12},
+		{-123.23, 123},
+		{123.23, 123.25},
 	}
 	for _, test := range tests {
 		h := makePVI("a", test.h)
