@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_makePVI(t *testing.T) {
+func Test_makeFloatKey(t *testing.T) {
 	tests := []struct {
 		path     string
 		value    float64
@@ -40,12 +40,12 @@ func Test_makePVI(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := makePVI(test.path, test.value)
+		got := pathValueAsKey(test.path, test.value)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
 
-func Test_makePVS(t *testing.T) {
+func Test_makeStringKey(t *testing.T) {
 	tests := []struct {
 		path     string
 		value    string
@@ -74,12 +74,12 @@ func Test_makePVS(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := makePVS(test.path, test.value)
+		got := pathValueAsKey(test.path, test.value)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
 
-func Test_makePVB(t *testing.T) {
+func Test_makeBooleanKey(t *testing.T) {
 	tests := []struct {
 		path     string
 		value    bool
@@ -103,12 +103,12 @@ func Test_makePVB(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := makePVB(test.path, test.value)
+		got := pathValueAsKey(test.path, test.value)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
 
-func Test_makePVN(t *testing.T) {
+func Test_makeNullKey(t *testing.T) {
 	tests := []struct {
 		path     string
 		expected []byte
@@ -131,7 +131,7 @@ func Test_makePVN(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := makePVN(test.path)
+		got := pathValueAsKey(test.path, nil)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, nil)
 	}
 }
@@ -145,12 +145,12 @@ func Test_getPathValues(t *testing.T) {
 		{
 			map[string]any{"a": 2, "b": 4, "c": "hey world"},
 			"",
-			[][]byte{makePVI("a", 2), makePVI("b", 4), makePVS("c", "hey world")},
+			[][]byte{pathValueAsKey("a", 2), pathValueAsKey("b", 4), pathValueAsKey("c", "hey world")},
 		},
 		{
 			map[string]any{"a": map[string]any{"12": "foo"}},
 			"",
-			[][]byte{makePVS("a.12", "foo")},
+			[][]byte{pathValueAsKey("a.12", "foo")},
 		},
 	}
 
@@ -162,7 +162,7 @@ func Test_getPathValues(t *testing.T) {
 }
 
 // TODO tests for PV sort ordering
-func Test_makePVISort(t *testing.T) {
+func Test_makeNumberSort(t *testing.T) {
 	tests := []struct {
 		l float64
 		h float64
@@ -177,14 +177,14 @@ func Test_makePVISort(t *testing.T) {
 		{123.23, 123.25},
 	}
 	for _, test := range tests {
-		h := makePVI("a", test.h)
-		l := makePVI("a", test.l)
+		h := pathValueAsKey("a", test.h)
+		l := pathValueAsKey("a", test.l)
 		assert.True(t, slices.Compare(h, l) > 0,
 			"%v %v !> %v %v", h, test.h, test.l, l)
 	}
 }
 
-func Test_makePVSSort(t *testing.T) {
+func Test_makeStringSort(t *testing.T) {
 	tests := []struct {
 		l string
 		h string
@@ -196,8 +196,8 @@ func Test_makePVSSort(t *testing.T) {
 		{"a whole lot of string", "a whole lot of text"},
 	}
 	for _, test := range tests {
-		h := makePVS("a", test.h)
-		l := makePVS("a", test.l)
+		h := pathValueAsKey("a", test.h)
+		l := pathValueAsKey("a", test.l)
 		assert.True(t, slices.Compare(h, l) > 0,
 			"%v %s !> %s %v", h, test.h, test.l, l)
 	}
@@ -206,39 +206,12 @@ func Test_makePVSSort(t *testing.T) {
 // Check against the CouchDB collation order.
 func Test_PVSortTypes(t *testing.T) {
 	p := "a.b.c"
-	assert.True(t, slices.Compare(makePVN(p), makePVB(p, false)) < 0,
+	assert.True(t, slices.Compare(pathValueAsKey(p, nil), pathValueAsKey(p, false)) < 0,
 		"null should be less than false")
-	assert.True(t, slices.Compare(makePVB(p, false), makePVB(p, true)) < 0,
+	assert.True(t, slices.Compare(pathValueAsKey(p, false), pathValueAsKey(p, true)) < 0,
 		"false should be less than true")
-	assert.True(t, slices.Compare(makePVB(p, true), makePVI(p, 1234)) < 0,
+	assert.True(t, slices.Compare(pathValueAsKey(p, true), pathValueAsKey(p, 1234)) < 0,
 		"true should be less than number")
-	assert.True(t, slices.Compare(makePVI(p, 1234), makePVS(p, "1234")) < 0,
+	assert.True(t, slices.Compare(pathValueAsKey(p, 1234), pathValueAsKey(p, "1234")) < 0,
 		"number should be less than string")
-}
-
-func Test_pathValueAsKey(t *testing.T) {
-	// pathvalueaskey is a shorthand to get the right makePV*, so we
-	// can compare against the known-good results for those lower level
-	// methods.
-	assert.True(t,
-		slices.Compare(makePVN("a"), pathValueAsKey("a", nil)) == 0,
-		"Failed for null",
-	)
-	assert.True(t,
-		slices.Compare(makePVB("a", false), pathValueAsKey("a", false)) == 0,
-		"Failed for false",
-	)
-	assert.True(t,
-		slices.Compare(makePVB("a", true), pathValueAsKey("a", true)) == 0,
-		"Failed for true",
-	)
-	assert.True(t,
-		slices.Compare(makePVI("a", 1234), pathValueAsKey("a", 1234)) == 0,
-		"Failed for number",
-	)
-	assert.True(t,
-		slices.Compare(makePVS("a", "b"), pathValueAsKey("a", "b")) == 0,
-		"Failed for string",
-	)
-
 }

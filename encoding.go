@@ -1,47 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"log"
 	"math"
 )
 
-// makePVS returns a path value for a string value
-func makePVS(path, value string) []byte {
-	pv := []byte(path)
-	pv = append(pv, 0)
-	pv = append(pv, JSONTagString)
-	pv = append(pv, []byte(value)...)
-	return pv
-}
-
-// makePVB returns a path value for a boolean value
-func makePVB(path string, value bool) []byte {
-	pv := []byte(path)
-	pv = append(pv, 0)
-	if value {
-		pv = append(pv, JSONTagTrue)
-	} else {
-		pv = append(pv, JSONTagFalse)
-	}
-	return pv
-}
-
-// makePVN returns a path value for a null value
-func makePVN(path string) []byte {
-	pv := []byte(path)
-	pv = append(pv, 0)
-	pv = append(pv, JSONTagNull)
-	return pv
-}
-
-// makePVI returns a path value for an int value
-func makePVI(path string, value float64) []byte {
+func encodeFloat(value float64) []byte {
 	// This StackOverflow answer shows how to
 	// encode a float64 into a byte array that
 	// has the same sort order as the floats.
 	// https://stackoverflow.com/a/54557561
-	var buf [8]byte
+	buf := make([]byte, 8)
 	bits := math.Float64bits(value)
 	if value >= 0 {
 		bits ^= 0x8000000000000000
@@ -49,52 +20,75 @@ func makePVI(path string, value float64) []byte {
 		bits ^= 0xffffffffffffffff
 	}
 	binary.BigEndian.PutUint64(buf[:], bits)
-
-	pv := []byte(path)
-	pv = append(pv, 0)
-	pv = append(pv, JSONTagNumber)
-	pv = append(pv, buf[:]...)
-	return pv
+	return buf
 }
 
 // pathValueAsKey returns a []byte key for path and value.
 func pathValueAsKey(path string, value interface{}) []byte {
 	// fmt.Printf("path: %+v, value: %+v\n", path, value)
 
+	// A key for path and value looks like:
+	// [66, 6f, 6f, 00, 2c, 68, 65, 6c, 6c, 6f]
+	//  ----------  --  --  ------------------
+	//  path (foo)  |   |   value (hello)
+	//              |   `JSONTagString
+	//              `null between path and value
+
+	// First, create the tagged value byte array representation
+	var taggedV []byte
+
+	// Helper to create a byte encoding of v including the type tag
+	taggedF := func(v float64) []byte {
+		return append([]byte{JSONTagNumber}, encodeFloat(v)...)
+	}
+
 	switch t := value.(type) {
 	case nil:
-		return makePVN(path)
+		taggedV = []byte{JSONTagNull}
 	case bool:
-		return makePVB(path, t)
+		if t {
+			taggedV = []byte{JSONTagTrue}
+		} else {
+			taggedV = []byte{JSONTagFalse}
+		}
 	case float64:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case float32:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case uint:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case uint8:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case uint16:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case uint32:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case uint64:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case int:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case int8:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case int16:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case int32:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case int64:
-		return makePVI(path, float64(t))
+		taggedV = taggedF(float64(t))
 	case string:
-		return makePVS(path, value.(string))
+		taggedS := append([]byte{JSONTagString}, []byte(value.(string))...)
+		taggedV = taggedS
 	default:
 		// This should never happen from value JSON
 		log.Printf("Unexpected type in pathValueAsKey: %+v\n", value)
 		panic(1)
 	}
+
+	return nullSepTuple([]byte(path), taggedV)
+}
+
+// nullSepTuple builds a tuple of parts into a single packed byte array.
+// 0x00 is used as the separator.
+func nullSepTuple(parts ...[]byte) []byte {
+	return bytes.Join(parts, sep)
 }

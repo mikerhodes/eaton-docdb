@@ -14,10 +14,10 @@ func Test_fwdIndexKey(t *testing.T) {
 		0x66, 0x6f, 0x6f, // foo
 		0x0, // separator
 	}
-	expected = append(expected, makePVB("active", false)...)
+	expected = append(expected, pathValueAsKey("active", false)...)
 	k := fwdIdxKey{
 		id:           "foo",
-		pathValueKey: makePVB("active", false),
+		pathValueKey: pathValueAsKey("active", false),
 	}
 	assert.Equal(t, expected, k.bytes())
 
