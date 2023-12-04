@@ -7,6 +7,8 @@ import (
 	"math"
 )
 
+var sep []byte = []byte{0}
+
 func encodeFloat(value float64) []byte {
 	// This StackOverflow answer shows how to
 	// encode a float64 into a byte array that
@@ -84,11 +86,29 @@ func pathValueAsKey(path string, value interface{}) []byte {
 		panic(1)
 	}
 
-	return nullSepTuple([]byte(path), taggedV)
+	return packTuple([]byte(path), taggedV)
 }
 
-// nullSepTuple builds a tuple of parts into a single packed byte array.
+// packTuple packs a set of components into a packed byte array
+// representation. Use unpackTuple[N] to unpack.
 // 0x00 is used as the separator.
-func nullSepTuple(parts ...[]byte) []byte {
-	return bytes.Join(parts, sep)
+func packTuple(components ...[]byte) []byte {
+	return bytes.Join(components, sep)
+}
+
+// unpackTuple unpacked packed into its components.
+// It is equivalent to unpackTupleN with a count of -1.
+func unpackTuple(packed []byte) [][]byte {
+	return unpackTupleN(packed, -1)
+}
+
+// unpackTupleN unpacks packed into its components.
+//
+// The count determines the number of components to return:
+//
+//	n > 0: at most n subslices; the last subslice will be the unsplit remainder.
+//	n == 0: the result is nil (zero subslices)
+//	n < 0: all subslices
+func unpackTupleN(packed []byte, n int) [][]byte {
+	return bytes.SplitN(packed, sep, n)
 }

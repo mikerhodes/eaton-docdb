@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"slices"
@@ -12,10 +11,9 @@ import (
 
 var invIdxNamespace []byte = []byte{'i'}
 var fwdIdxNamespace []byte = []byte{'f'}
-var sep []byte = []byte{0}
 
 func invIdxKey(pathValueKey []byte) []byte {
-	invIdxKey := bytes.Join([][]byte{invIdxNamespace, pathValueKey}, sep)
+	invIdxKey := packTuple(invIdxNamespace, pathValueKey)
 	return invIdxKey
 }
 
@@ -76,8 +74,8 @@ func unindex(indexDb *pebble.DB, id string) error {
 
 	// 1. Get the range for id from the forward index. Everything
 	//    is encoded into the keys.
-	startKey := bytes.Join([][]byte{fwdIdxNamespace, []byte(id)}, sep)
-	endKey := bytes.Join([][]byte{fwdIdxNamespace, []byte(id)}, sep)
+	startKey := packTuple(fwdIdxNamespace, []byte(id))
+	endKey := packTuple(fwdIdxNamespace, []byte(id))
 	endKey = append(endKey, 1) // 1 > 0-separator
 
 	// 2. Read all the keys. Deserialise each key to find the
@@ -126,7 +124,10 @@ type fwdIdxKey struct {
 
 // NewFwdIdxKey deserialises a fwdIndexKey from b
 func NewFwdIdxKey(b []byte) fwdIdxKey {
-	parts := bytes.SplitN(b, sep, 3)
+	// We need to use unpackTupleN because pathValueKey is
+	// itself a tuple with multiple components, and we don't
+	// want to split that.
+	parts := unpackTupleN(b, 3)
 	return fwdIdxKey{
 		id:           string(parts[1]),
 		pathValueKey: parts[2],
@@ -135,11 +136,7 @@ func NewFwdIdxKey(b []byte) fwdIdxKey {
 
 // bytes serialises a fwdIndexKey to bytes
 func (k fwdIdxKey) bytes() []byte {
-	return bytes.Join([][]byte{
-		fwdIdxNamespace,
-		[]byte(k.id),
-		k.pathValueKey,
-	}, sep)
+	return packTuple(fwdIdxNamespace, []byte(k.id), k.pathValueKey)
 }
 
 // ensureIdInValue ensures that id is in idsString, which is the
