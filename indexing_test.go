@@ -19,7 +19,7 @@ func Test_fwdIndexKey(t *testing.T) {
 		id:           "foo",
 		pathValueKey: pathValueAsKey("active", false),
 	}
-	assert.Equal(t, expected, k.bytes())
+	assert.Equal(t, expected, encodeFwdIdxKey(k))
 
 	assert.Equal(t, k, decodeFwdIdxKey(expected))
 }

@@ -45,8 +45,8 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 			id:           id,
 			pathValueKey: pathValue,
 		}
-		err = b.Set(fwdIdxKey.bytes(), []byte{}, pebble.Sync)
-		log.Printf("fwd key bytes: %v", fwdIdxKey.bytes())
+		err = b.Set(encodeFwdIdxKey(fwdIdxKey), []byte{}, pebble.Sync)
+		// log.Printf("fwd key bytes: %v", encodeFwdIdxKey(fwdIdxKey))
 		if err != nil {
 			log.Printf("Could not update forward index: %s", err)
 		}
@@ -80,8 +80,8 @@ func unindex(indexDb *pebble.DB, id string) error {
 	iter := b.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
 		fik := decodeFwdIdxKey(iter.Key())
-		log.Printf("unindex fwd key bytes: %v", fik.bytes())
-		log.Printf("fik: %+v", fik)
+		// log.Printf("unindex fwd key bytes: %v", encodeFwdIdxKey(fik))
+		// log.Printf("fik: %+v", fik)
 		invIdxKey := invIdxKey(fik.pathValueKey, &fik.id)
 		err := b.Delete(invIdxKey, pebble.Sync)
 		if err != nil {
@@ -108,6 +108,7 @@ func decodeFwdIdxKey(b []byte) fwdIdxKey {
 	// We need to use unpackTupleN because pathValueKey is
 	// itself a tuple with multiple components, and we don't
 	// want to split that.
+	// [ fwdIdxNS, docId, pathValueKey ]
 	parts := unpackTupleN(b, 3)
 	return fwdIdxKey{
 		id:           string(parts[1]),
@@ -115,8 +116,8 @@ func decodeFwdIdxKey(b []byte) fwdIdxKey {
 	}
 }
 
-// bytes serialises a fwdIndexKey to bytes
-func (k fwdIdxKey) bytes() []byte {
+// encodeFwdIdxKey serialises k to a byte slice.
+func encodeFwdIdxKey(k fwdIdxKey) []byte {
 	return packTuple(fwdIdxNamespace, []byte(k.id), k.pathValueKey)
 }
 
