@@ -12,9 +12,12 @@ import (
 var invIdxNamespace []byte = []byte{'i'}
 var fwdIdxNamespace []byte = []byte{'f'}
 
-func invIdxKey(pathValueKey []byte) []byte {
-	invIdxKey := packTuple(invIdxNamespace, pathValueKey)
-	return invIdxKey
+func invIdxKey(pathValueKey []byte, id *string) []byte {
+	if id != nil {
+		return packTuple(invIdxNamespace, pathValueKey, []byte(*id))
+	} else {
+		return packTuple(invIdxNamespace, pathValueKey)
+	}
 }
 
 // index adds document to the index, associated with id.
@@ -30,22 +33,9 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 	pv := getPathValues(document, "")
 
 	for _, pathValue := range pv {
-		invIdxKey := invIdxKey(pathValue)
+		invIdxKey := invIdxKey(pathValue, &id)
 
-		idsString, closer, err := indexDB.Get([]byte(invIdxKey))
-		if err != nil && err != pebble.ErrNotFound {
-			log.Printf("Could not look up pathvalue [%#v]: %s", document, err)
-		}
-
-		idsString = ensureIdInValue(idsString, id)
-
-		if closer != nil {
-			err = closer.Close()
-			if err != nil {
-				log.Printf("Could not close: %s", err)
-			}
-		}
-		err = indexDB.Set(invIdxKey, idsString, pebble.Sync)
+		err = indexDB.Set(invIdxKey, nil, pebble.Sync)
 		if err != nil {
 			log.Printf("Could not update inverted index: %s", err)
 		}
@@ -87,27 +77,13 @@ func unindex(indexDb *pebble.DB, id string) error {
 		fik := NewFwdIdxKey(iter.Key())
 		log.Printf("unindex fwd key bytes: %v", fik.bytes())
 		log.Printf("fik: %+v", fik)
-		invIdxKey := invIdxKey(fik.pathValueKey)
-		// Delete the doc id from the list in the inverted index
-		idsString, closer, err := b.Get(invIdxKey)
-		if err != nil && err != pebble.ErrNotFound {
-			log.Printf(
-				"Didn't find invIdxKey %v in index; shouldn't happen: %v",
-				invIdxKey, err)
-			continue
-		}
-		newIdsString := deleteIdFromValue(idsString, id)
-		if len(newIdsString) == 0 {
-			err = b.Delete(invIdxKey, pebble.Sync)
-		} else {
-			err = b.Set(invIdxKey, newIdsString, pebble.Sync)
-		}
+		invIdxKey := invIdxKey(fik.pathValueKey, &fik.id)
+		err := b.Delete(invIdxKey, pebble.Sync)
 		if err != nil {
 			log.Printf(
 				"Couldn't delete/set invIdxKey %v in index: %v",
 				invIdxKey, err)
 		}
-		closer.Close()
 	}
 	iter.Close()
 

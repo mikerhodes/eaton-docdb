@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
@@ -68,47 +68,118 @@ func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 	return idsInAll, nil
 }
 
-func lookupEq(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
-	pvk := pathValueAsKey(path, value)
-	indexKey := invIdxKey(pvk)
-	log.Printf("lookupEq: %v", indexKey)
-	idsString, closer, err := indexDb.Get(indexKey)
-	if err != nil && err != pebble.ErrNotFound {
-		return nil, fmt.Errorf("Could not look up pathvalue [%#v]: %s", pvk, err)
-	}
-	if closer != nil {
-		defer closer.Close()
-	}
-
-	if len(idsString) == 0 {
-		return nil, nil
-	}
-
-	return strings.Split(string(idsString), ","), nil
+type InvIndexKey struct {
+	Path, Value, DocID []byte
 }
 
-func lookupGE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
+// unpack the key. nb returns value with tag.
+func decodeInvIndexKey(k []byte) (InvIndexKey, error) {
+	// [ type 00 path 00 tag value 00 docid ]
+	// - value can contain 00 bytes --- particularly numbers
+	// - null, true, false just have tag
+	// our main issue is splitting up the [tag value 00 docid]
+	// because we have to alter strategy depending on type
+	iik := InvIndexKey{}
+	sep := []byte{0}
+
+	// Check namespace of key and following sep
+	if k[0] != invIdxNamespace[0] || k[1] != 0 {
+		// error
+		return iik, errors.New(
+			fmt.Sprintf(
+				"Invalid namespace for inverted index key (%d %d)", k[0], k[1],
+			),
+		)
+	}
+	k = k[2:]
+
+	// path
+	m := bytes.Index(k, sep)
+	if m < 0 {
+		return iik, errors.New("No path found in inverted index key")
+	}
+	iik.Path = k[:m:m]
+	k = k[m+len(sep):]
+
+	// value
+	switch k[0] {
+	case JSONTagNull:
+		fallthrough
+	case JSONTagTrue:
+		fallthrough
+	case JSONTagFalse:
+		iik.Value = []byte{k[0]}
+		k = k[1+len(sep):]
+	case JSONTagNumber:
+		n := 9 // tag + 8 byte float encoding
+		iik.Value = k[0:n]
+		k = k[n+len(sep):]
+	case JSONTagString:
+		m = bytes.Index(k, sep)
+		if m < 0 {
+			return iik, errors.New(
+				"String type with no value found in inverted index key")
+		}
+		iik.Value = k[:m:m]
+		k = k[m+len(sep):]
+	default:
+		return iik, errors.New(
+			"Unrecognised type tag for inverted index key")
+	}
+
+	// docID
+	iik.DocID = k[:]
+
+	return iik, nil
+}
+
+func lookupEq(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := invIdxKey(pathValueAsKey(path, value))
-	endKey := invIdxKey(pathEndKey(path))
+	startKey := invIdxKey(pathValueAsKey(path, value), nil)
+	endKey := invIdxKey(pathValueEndKey(path, value), nil)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("greaterThan: %+v\n", readOptions)
 
 	iter := indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
-		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
-		ids = append(
-			ids,
-			strings.Split(string(iter.Value()), ",")...)
+		// fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		// fmt.Printf("unpacked: %v\n", unpackTuple(iter.Key()))
+		id, err := decodeInvIndexKey(iter.Key())
+		if err != nil {
+			log.Printf("Bad inverted index key found %v: %v", iter.Key(), err)
+			continue
+		}
+		ids = append(ids, string(id.DocID))
+	}
+	return ids, iter.Close()
+}
+
+func lookupGTE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
+	ids := []string{}
+	startKey := invIdxKey(pathValueAsKey(path, value), nil)
+	endKey := invIdxKey(pathEndKey(path), nil)
+
+	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
+	fmt.Printf("greaterThan: %+v\n", readOptions)
+
+	iter := indexDb.NewIter(readOptions)
+	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
+		// fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		id, err := decodeInvIndexKey(iter.Key())
+		if err != nil {
+			log.Printf("Bad inverted index key found %v: %v", iter.Key(), err)
+			continue
+		}
+		ids = append(ids, string(id.DocID))
 	}
 	return ids, iter.Close()
 }
 
 func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := invIdxKey(pathValueAsKey(path, value))
-	endKey := invIdxKey(pathEndKey(path))
+	startKey := invIdxKey(pathValueAsKey(path, value), nil)
+	endKey := invIdxKey(pathEndKey(path), nil)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("greaterThan: %+v\n", readOptions)
@@ -117,13 +188,16 @@ func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
 		// As LowerBound is inclusive, we need to skip over
 		// entries at startKey to get greater than semantics.
-		if slices.Compare(startKey, iter.Key()) == 0 {
+		if bytes.HasPrefix(iter.Key(), startKey) {
 			continue
 		}
-		fmt.Printf("key=%+v value=%+v\n", iter.Key(), iter.Value())
-		ids = append(
-			ids,
-			strings.Split(string(iter.Value()), ",")...)
+		// fmt.Printf("key=%+v value=%+v\n", iter.Key(), iter.Value())
+		id, err := decodeInvIndexKey(iter.Key())
+		if err != nil {
+			log.Printf("Bad inverted index key found %v: %v", iter.Key(), err)
+			continue
+		}
+		ids = append(ids, string(id.DocID))
 	}
 	return ids, iter.Close()
 }
@@ -131,27 +205,30 @@ func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 func lookupLT(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
-	startKey := invIdxKey(pathStartKey(path))
-	endKey := invIdxKey(pathValueAsKey(path, value))
+	startKey := invIdxKey(pathStartKey(path), nil)
+	endKey := invIdxKey(pathValueAsKey(path, value), nil)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)
 
 	iter := indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
-		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
-		ids = append(
-			ids,
-			strings.Split(string(iter.Value()), ",")...)
+		// fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		id, err := decodeInvIndexKey(iter.Key())
+		if err != nil {
+			log.Printf("Bad inverted index key found %v: %v", iter.Key(), err)
+			continue
+		}
+		ids = append(ids, string(id.DocID))
 	}
 	return ids, iter.Close()
 }
 
-func lookupLE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
+func lookupLTE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
-	startKey := invIdxKey(pathStartKey(path))
-	endKey := invIdxKey(pathValueAsKey(path, value))
+	startKey := invIdxKey(pathStartKey(path), nil)
+	endKey := invIdxKey(pathValueAsKey(path, value), nil)
 
 	// For less than or equal to, we have to explicitly do the
 	// equal to search, as UpperBound is exclusive so doesn't
@@ -167,10 +244,13 @@ func lookupLE(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 
 	iter := indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
-		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
-		ids = append(
-			ids,
-			strings.Split(string(iter.Value()), ",")...)
+		// fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+		id, err := decodeInvIndexKey(iter.Key())
+		if err != nil {
+			log.Printf("Bad inverted index key found %v: %v", iter.Key(), err)
+			continue
+		}
+		ids = append(ids, string(id.DocID))
 	}
 	return ids, iter.Close()
 }
@@ -186,6 +266,14 @@ func pathEndKey(path string) []byte {
 	// value 1 in a field name, "Start of Header" character.
 	k := []byte(path)
 	return append(k, 1)
+}
+
+// pathValueEndKey returns a key just beyond the end of the path value
+func pathValueEndKey(path string, value interface{}) []byte {
+	// Similar to pathEndKey, we use the fact that there's
+	// a zero separator between the path value key and the
+	// doc ID to generate an upper bound.
+	return append(pathValueAsKey(path, value), 1)
 }
 
 // pathStartKey returns a key that is the lowest that

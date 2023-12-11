@@ -41,7 +41,7 @@ func Test_getValueAtPath(t *testing.T) {
 		assert.Equal(t, test.expectedOk, ok)
 	}
 }
-func Test_simpleSearch(t *testing.T) {
+func Test_lookupEq(t *testing.T) {
 	d := t.TempDir()
 	s, err := newServer(d)
 	if err != nil {
@@ -63,19 +63,19 @@ func Test_simpleSearch(t *testing.T) {
 	)
 
 	ids, _ := lookupEq(s.indexDb, "name", "mike")
-	assert.ElementsMatch(t, []string{"mike"}, ids)
+	assert.ElementsMatch(t, []string{"mike"}, ids, "lookupEq mike")
 	ids, _ = lookupEq(s.indexDb, "name", "fred")
-	assert.ElementsMatch(t, []string{}, ids)
+	assert.ElementsMatch(t, []string{}, ids, "lookupEq fred")
 
 	ids, _ = lookupEq(s.indexDb, "age", 40)
-	assert.ElementsMatch(t, []string{"mike"}, ids)
+	assert.ElementsMatch(t, []string{"mike"}, ids, "lookupEq age 40")
 	ids, _ = lookupEq(s.indexDb, "age", "mike")
-	assert.ElementsMatch(t, []string{}, ids)
+	assert.ElementsMatch(t, []string{}, ids, "lookupEq age mike")
 	ids, _ = lookupEq(s.indexDb, "age", "40")
-	assert.ElementsMatch(t, []string{}, ids)
+	assert.ElementsMatch(t, []string{}, ids, "lookupEq age string 40")
 
 	ids, _ = lookupEq(s.indexDb, "pet", "cat")
-	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
+	assert.ElementsMatch(t, []string{"mike", "phil"}, ids, "lookupEq pet cat")
 }
 
 func Test_lookupGE(t *testing.T) {
@@ -108,34 +108,34 @@ func Test_lookupGE(t *testing.T) {
 
 	var ids []string
 
-	ids, _ = lookupGE(s.indexDb, "name", "mike")
+	ids, _ = lookupGTE(s.indexDb, "name", "mike")
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
-	ids, _ = lookupGE(s.indexDb, "name", "ned")
+	ids, _ = lookupGTE(s.indexDb, "name", "ned")
 	assert.ElementsMatch(t, []string{"phil"}, ids)
-	ids, _ = lookupGE(s.indexDb, "name", "tom")
+	ids, _ = lookupGTE(s.indexDb, "name", "tom")
 	assert.ElementsMatch(t, []string{}, ids)
-	ids, _ = lookupGE(s.indexDb, "name", 1234)
+	ids, _ = lookupGTE(s.indexDb, "name", 1234)
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
-	ids, _ = lookupGE(s.indexDb, "name", true)
+	ids, _ = lookupGTE(s.indexDb, "name", true)
 	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
 
-	ids, _ = lookupGE(s.indexDb, "age", 20)
+	ids, _ = lookupGTE(s.indexDb, "age", 20)
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
-	ids, _ = lookupGE(s.indexDb, "age", 40)
+	ids, _ = lookupGTE(s.indexDb, "age", 40)
 	assert.ElementsMatch(t, []string{"mike"}, ids)
-	ids, _ = lookupGE(s.indexDb, "age", 400)
+	ids, _ = lookupGTE(s.indexDb, "age", 400)
 	assert.ElementsMatch(t, []string{}, ids)
-	ids, _ = lookupGE(s.indexDb, "age", "mike")
+	ids, _ = lookupGTE(s.indexDb, "age", "mike")
 	assert.ElementsMatch(t, []string{}, ids)
-	ids, _ = lookupGE(s.indexDb, "age", "40")
+	ids, _ = lookupGTE(s.indexDb, "age", "40")
 	assert.ElementsMatch(t, []string{}, ids)
 
-	ids, _ = lookupGE(s.indexDb, "pet", "cat")
+	ids, _ = lookupGTE(s.indexDb, "pet", "cat")
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
 
 	// Check we don't bleed into other fields greater than this one
 	// Ie, age < name in the byte array prefixes
-	ids, _ = lookupGE(s.indexDb, "age", 400000)
+	ids, _ = lookupGTE(s.indexDb, "age", 400000)
 	assert.ElementsMatch(t, []string{}, ids)
 }
 
@@ -169,8 +169,6 @@ func Test_lookupGT(t *testing.T) {
 
 	var ids []string
 
-	ids, _ = lookupGT(s.indexDb, "name", "mike")
-	assert.ElementsMatch(t, []string{"phil"}, ids)
 	ids, _ = lookupGT(s.indexDb, "name", "ned")
 	assert.ElementsMatch(t, []string{"phil"}, ids)
 	ids, _ = lookupGT(s.indexDb, "name", "tom")
@@ -179,6 +177,8 @@ func Test_lookupGT(t *testing.T) {
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
 	ids, _ = lookupGT(s.indexDb, "name", true)
 	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupGT(s.indexDb, "name", "mike")
+	assert.ElementsMatch(t, []string{"phil"}, ids)
 
 	ids, _ = lookupGT(s.indexDb, "age", 20)
 	assert.ElementsMatch(t, []string{"mike", "phil"}, ids)
@@ -259,8 +259,73 @@ func Test_lookupLT(t *testing.T) {
 	ids, _ = lookupLT(s.indexDb, "pet", nil)
 	assert.ElementsMatch(t, []string{}, ids)
 
+	// // Check we don't bleed into other fields lower than this one
+	// // Ie, name > age in the byte array prefixes
+	ids, _ = lookupLT(s.indexDb, "name", 11) // funny is 12
+	assert.ElementsMatch(t, []string{}, ids)
+}
+
+func Test_lookupLTE(t *testing.T) {
+	d := t.TempDir()
+	s, err := newServer(d)
+	if err != nil {
+		assert.FailNow(t, "Could not create s")
+	}
+	s.addDocument("mike",
+		map[string]any{
+			"name": "mike",
+			"age":  40,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("phil",
+		map[string]any{
+			"name": "phil",
+			"age":  30,
+			"pet":  "cat",
+		},
+	)
+	s.addDocument("funny",
+		map[string]any{
+			"name": 12,
+			"age":  nil,
+			"pet":  false,
+		},
+	)
+
+	var ids []string
+
+	ids, _ = lookupLTE(s.indexDb, "name", "mike")
+	assert.ElementsMatch(t, []string{"mike", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "name", "ned")
+	assert.ElementsMatch(t, []string{"mike", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "name", "tom")
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "name", 1234)
+	assert.ElementsMatch(t, []string{"funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "name", true)
+	assert.ElementsMatch(t, []string{}, ids)
+
+	ids, _ = lookupLTE(s.indexDb, "age", 20)
+	assert.ElementsMatch(t, []string{"funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "age", 40)
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "age", 400)
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "age", "mike")
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "age", "10")
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "age", nil)
+	assert.ElementsMatch(t, []string{"funny"}, ids)
+
+	ids, _ = lookupLTE(s.indexDb, "pet", "cat")
+	assert.ElementsMatch(t, []string{"mike", "phil", "funny"}, ids)
+	ids, _ = lookupLTE(s.indexDb, "pet", nil)
+	assert.ElementsMatch(t, []string{}, ids)
+
 	// Check we don't bleed into other fields lower than this one
 	// Ie, name > age in the byte array prefixes
-	ids, _ = lookupLT(s.indexDb, "name", 11) // funny is 12
+	ids, _ = lookupLTE(s.indexDb, "name", 11) // funny is 12
 	assert.ElementsMatch(t, []string{}, ids)
 }
