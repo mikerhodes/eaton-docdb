@@ -152,6 +152,19 @@ func Test_getPathValues(t *testing.T) {
 			"",
 			[][]byte{pathValueAsKey("a.12", "foo")},
 		},
+		{
+			map[string]any{"a": map[string]any{
+				"b": map[string]any{
+					"c":   map[string]any{"d": "foo"},
+					"foo": "bar",
+				},
+			}},
+			"",
+			[][]byte{
+				pathValueAsKey("a.b.c.d", "foo"),
+				pathValueAsKey("a.b.foo", "bar"),
+			},
+		},
 	}
 
 	for _, test := range tests {

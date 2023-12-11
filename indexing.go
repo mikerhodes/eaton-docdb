@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/cockroachdb/pebble"
@@ -127,6 +126,10 @@ func encodeFwdIdxKey(k fwdIdxKey) []byte {
 func getPathValues(obj map[string]any, prefix string) [][]byte {
 	var pvs [][]byte
 	for key, val := range obj {
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+
 		switch t := val.(type) {
 		case map[string]any:
 			pvs = append(pvs, getPathValues(t, key)...)
@@ -136,14 +139,8 @@ func getPathValues(obj map[string]any, prefix string) [][]byte {
 			continue
 		}
 
-		if prefix != "" {
-			key = prefix + "." + key
-		}
-
 		pvk := pathValueAsKey(key, val)
-
-		fmt.Printf("Added index val: %v\n", pvk)
-
+		// fmt.Printf("Added index val: %v\n", pvk)
 		pvs = append(pvs, pvk)
 	}
 
