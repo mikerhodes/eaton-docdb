@@ -79,7 +79,7 @@ func unindex(indexDb *pebble.DB, id string) error {
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	iter := b.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
-		fik := NewFwdIdxKey(iter.Key())
+		fik := decodeFwdIdxKey(iter.Key())
 		log.Printf("unindex fwd key bytes: %v", fik.bytes())
 		log.Printf("fik: %+v", fik)
 		invIdxKey := invIdxKey(fik.pathValueKey, &fik.id)
@@ -103,8 +103,8 @@ type fwdIdxKey struct {
 	pathValueKey []byte
 }
 
-// NewFwdIdxKey deserialises a fwdIndexKey from b
-func NewFwdIdxKey(b []byte) fwdIdxKey {
+// decodeFwdIdxKey deserialises a fwdIndexKey from b
+func decodeFwdIdxKey(b []byte) fwdIdxKey {
 	// We need to use unpackTupleN because pathValueKey is
 	// itself a tuple with multiple components, and we don't
 	// want to split that.

@@ -21,7 +21,7 @@ func Test_fwdIndexKey(t *testing.T) {
 	}
 	assert.Equal(t, expected, k.bytes())
 
-	assert.Equal(t, k, NewFwdIdxKey(expected))
+	assert.Equal(t, k, decodeFwdIdxKey(expected))
 }
 
 func Test_unindex(t *testing.T) {
