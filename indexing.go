@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"slices"
-	"strings"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -29,13 +27,15 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 		return
 	}
 
+	b := indexDB.NewBatch()
+
 	// Now, index the new values for the document
 	pv := getPathValues(document, "")
 
 	for _, pathValue := range pv {
 		invIdxKey := invIdxKey(pathValue, &id)
 
-		err = indexDB.Set(invIdxKey, nil, pebble.Sync)
+		err = b.Set(invIdxKey, nil, pebble.Sync)
 		if err != nil {
 			log.Printf("Could not update inverted index: %s", err)
 		}
@@ -45,12 +45,17 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 			id:           id,
 			pathValueKey: pathValue,
 		}
-		err = indexDB.Set(fwdIdxKey.bytes(), []byte{}, pebble.Sync)
+		err = b.Set(fwdIdxKey.bytes(), []byte{}, pebble.Sync)
 		log.Printf("fwd key bytes: %v", fwdIdxKey.bytes())
 		if err != nil {
 			log.Printf("Could not update forward index: %s", err)
 		}
+	}
 
+	err = indexDB.Apply(b, pebble.Sync)
+	if err != nil {
+		log.Printf("Could not index %q: %v", id, err)
+		return
 	}
 }
 
@@ -113,41 +118,6 @@ func NewFwdIdxKey(b []byte) fwdIdxKey {
 // bytes serialises a fwdIndexKey to bytes
 func (k fwdIdxKey) bytes() []byte {
 	return packTuple(fwdIdxNamespace, []byte(k.id), k.pathValueKey)
-}
-
-// ensureIdInValue ensures that id is in idsString, which is the
-// value we store in the index, a comma-separated list of doc IDs.
-func ensureIdInValue(idsString []byte, id string) []byte {
-	if len(idsString) == 0 {
-		idsString = []byte(id)
-	} else {
-		ids := strings.Split(string(idsString), ",")
-
-		found := false
-		for _, existingId := range ids {
-			if id == existingId {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			idsString = append(idsString, []byte(","+id)...)
-		}
-	}
-	return idsString
-}
-
-func deleteIdFromValue(idsString []byte, id string) []byte {
-	if len(idsString) == 0 {
-		return idsString
-	} else {
-		ids := strings.Split(string(idsString), ",")
-		ids = slices.DeleteFunc(ids, func(E string) bool {
-			return E == id
-		})
-		return []byte(strings.Join(ids, ","))
-	}
 }
 
 // getPathValues returns all path value keys for obj, using prefix as
