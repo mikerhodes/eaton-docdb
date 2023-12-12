@@ -9,14 +9,6 @@ import (
 var invIdxNamespace []byte = []byte{'i'}
 var fwdIdxNamespace []byte = []byte{'f'}
 
-func invIdxKey(pathValueKey []byte, id *string) []byte {
-	if id != nil {
-		return packTuple(invIdxNamespace, pathValueKey, []byte(*id))
-	} else {
-		return packTuple(invIdxNamespace, pathValueKey)
-	}
-}
-
 // index adds document to the index, associated with id.
 func index(indexDB *pebble.DB, id string, document map[string]any) {
 	// First, unindex the document
@@ -27,12 +19,14 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 	}
 
 	b := indexDB.NewBatch()
+	docID := []byte(id)
 
 	// Now, index the new values for the document
 	pv := getPathValues(document, "")
 
 	for _, pathValue := range pv {
-		invIdxKey := invIdxKey(pathValue, &id)
+		invIdxKey := encodeInvIdxKey(
+			pathValue.path, pathValue.taggedValue, docID)
 
 		err = b.Set(invIdxKey, nil, pebble.Sync)
 		if err != nil {
@@ -41,8 +35,9 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 
 		// Create the fwd index entries for this field of the document
 		fwdIdxKey := fwdIdxKey{
-			id:           id,
-			pathValueKey: pathValue,
+			id:          docID,
+			path:        pathValue.path,
+			taggedValue: pathValue.taggedValue,
 		}
 		err = b.Set(encodeFwdIdxKey(fwdIdxKey), []byte{}, pebble.Sync)
 		// log.Printf("fwd key bytes: %v", encodeFwdIdxKey(fwdIdxKey))
@@ -81,7 +76,7 @@ func unindex(indexDb *pebble.DB, id string) error {
 		fik := decodeFwdIdxKey(iter.Key())
 		// log.Printf("unindex fwd key bytes: %v", encodeFwdIdxKey(fik))
 		// log.Printf("fik: %+v", fik)
-		invIdxKey := invIdxKey(fik.pathValueKey, &fik.id)
+		invIdxKey := encodeInvIdxKey(fik.path, fik.taggedValue, fik.id)
 		err := b.Delete(invIdxKey, pebble.Sync)
 		if err != nil {
 			log.Printf(
@@ -98,8 +93,9 @@ func unindex(indexDb *pebble.DB, id string) error {
 }
 
 type fwdIdxKey struct {
-	id           string
-	pathValueKey []byte
+	id          []byte
+	path        []byte
+	taggedValue []byte
 }
 
 // decodeFwdIdxKey deserialises a fwdIndexKey from b
@@ -108,23 +104,28 @@ func decodeFwdIdxKey(b []byte) fwdIdxKey {
 	// itself a tuple with multiple components, and we don't
 	// want to split that.
 	// [ fwdIdxNS, docId, pathValueKey ]
-	parts := unpackTupleN(b, 3)
+	parts := unpackTupleN(b, 4)
 	return fwdIdxKey{
-		id:           string(parts[1]),
-		pathValueKey: parts[2],
+		id:          parts[1],
+		path:        parts[2],
+		taggedValue: parts[3],
 	}
 }
 
 // encodeFwdIdxKey serialises k to a byte slice.
 func encodeFwdIdxKey(k fwdIdxKey) []byte {
-	return packTuple(fwdIdxNamespace, []byte(k.id), k.pathValueKey)
+	return packTuple(fwdIdxNamespace, k.id, k.path, k.taggedValue)
+}
+
+type pathValue struct {
+	path, taggedValue []byte
 }
 
 // getPathValues returns all path value keys for obj, using prefix as
 // key prefix for the path part of the key.
 // Ignores arrays
-func getPathValues(obj map[string]any, prefix string) [][]byte {
-	var pvs [][]byte
+func getPathValues(obj map[string]any, prefix string) []pathValue {
+	var pvs []pathValue
 	for key, val := range obj {
 		if prefix != "" {
 			key = prefix + "." + key
@@ -139,7 +140,7 @@ func getPathValues(obj map[string]any, prefix string) [][]byte {
 			continue
 		}
 
-		pvk := pathValueAsKey(key, val)
+		pvk := pathValue{[]byte(key), encodeTaggedValue(val)}
 		// fmt.Printf("Added index val: %v\n", pvk)
 		pvs = append(pvs, pvk)
 	}

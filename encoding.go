@@ -25,16 +25,7 @@ func encodeFloat(value float64) []byte {
 	return buf
 }
 
-// pathValueAsKey returns a []byte key for path and value.
-func pathValueAsKey(path string, value interface{}) []byte {
-	// fmt.Printf("path: %+v, value: %+v\n", path, value)
-
-	// A key for path and value looks like:
-	// [66, 6f, 6f, 00, 2c, 68, 65, 6c, 6c, 6f]
-	//  ----------  --  --  ------------------
-	//  path (foo)  |   |   value (hello)
-	//              |   `JSONTagString
-	//              `null between path and value
+func encodeTaggedValue(value interface{}) []byte {
 
 	// First, create the tagged value byte array representation
 	var taggedV []byte
@@ -85,9 +76,19 @@ func pathValueAsKey(path string, value interface{}) []byte {
 		log.Printf("Unexpected type in pathValueAsKey: %+v\n", value)
 		panic(1)
 	}
-
-	return packTuple([]byte(path), taggedV)
+	return taggedV
 }
+
+// pathValueAsKey returns a []byte key for path and value.
+// func pathValueAsKey(path string, value interface{}) []byte {
+// A key for path and value looks like:
+// [66, 6f, 6f, 00, 2c, 68, 65, 6c, 6c, 6f]
+//  ----------  --  --  ------------------
+//  path (foo)  |   |   value (hello)
+//              |   `JSONTagString
+//              `null between path and value
+// return packTuple([]byte(path), encodeTaggedValue(value))
+// }
 
 // packTuple packs a set of components into a packed byte array
 // representation. Use unpackTuple[N] to unpack.

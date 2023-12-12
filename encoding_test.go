@@ -14,24 +14,28 @@ func Test_makeFloatKey(t *testing.T) {
 		expected []byte
 	}{
 		{"a", 12, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61,                                     // a
 			0x0,                                      // null separator
 			0x2b,                                     // JSONTagNumber
 			0xc0, 0x28, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 12
 		}},
 		{"a", 13, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61,                                     // a
 			0x0,                                      // null separator
 			0x2b,                                     // JSONTagNumber
 			0xc0, 0x2a, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // float64 13
 		}},
 		{"a.b.c", 1234567890, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,                                          // null separator
 			0x2b,                                         // JSONTagNumber
 			0xc1, 0xd2, 0x65, 0x80, 0xb4, 0x80, 0x0, 0x0, // float 1234567890
 		}},
 		{"a.b.c", -1, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,                                            // null separator
 			0x2b,                                           // JSONTagNumber
@@ -40,7 +44,10 @@ func Test_makeFloatKey(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := pathValueAsKey(test.path, test.value)
+		got := encodeInvIdxKey(
+			[]byte(test.path),
+			encodeTaggedValue(test.value),
+			nil)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
@@ -52,18 +59,21 @@ func Test_makeStringKey(t *testing.T) {
 		expected []byte
 	}{
 		{"a", "foo", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61,             // a
 			0x0,              // null separator
 			0x2c,             // JSONTagString
 			0x66, 0x6f, 0x6f, // foo
 		}},
 		{"b", "fop", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x62,             // a
 			0x0,              // null separator
 			0x2c,             // JSONTagString
 			0x66, 0x6f, 0x70, // fop
 		}},
 		{"a.b.c", "hello world Im here", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,                                      // null separator
 			0x2c,                                     // JSONTagString
@@ -74,7 +84,10 @@ func Test_makeStringKey(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := pathValueAsKey(test.path, test.value)
+		got := encodeInvIdxKey(
+			[]byte(test.path),
+			encodeTaggedValue(test.value),
+			nil)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
@@ -86,16 +99,19 @@ func Test_makeBooleanKey(t *testing.T) {
 		expected []byte
 	}{
 		{"a", true, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, // a
 			0x0,  // null separator
 			0x2a, // JSONTagTrue
 		}},
 		{"b", false, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x62, // a
 			0x0,  // null separator
 			0x29, // JSONTagFalse
 		}},
 		{"a.b.c", false, []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,  // null separator
 			0x29, // JSONTagFalse
@@ -103,7 +119,10 @@ func Test_makeBooleanKey(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := pathValueAsKey(test.path, test.value)
+		got := encodeInvIdxKey(
+			[]byte(test.path),
+			encodeTaggedValue(test.value),
+			nil)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, test.value)
 	}
 }
@@ -114,16 +133,19 @@ func Test_makeNullKey(t *testing.T) {
 		expected []byte
 	}{
 		{"a", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, // a
 			0x0,  // null separator
 			0x28, // JSONTagNull
 		}},
 		{"b", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x62, // a
 			0x0,  // null separator
 			0x28, // JSONTagNull
 		}},
 		{"a.b.c", []byte{
+			0x69, 0x0, // invIdxNamespace
 			0x61, 0x2e, 0x62, 0x2e, 0x63, // a.b.c
 			0x0,  // null separator
 			0x28, // JSONTagNull
@@ -131,7 +153,10 @@ func Test_makeNullKey(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := pathValueAsKey(test.path, nil)
+		got := encodeInvIdxKey(
+			[]byte(test.path),
+			encodeTaggedValue(nil),
+			nil)
 		assert.Equal(t, test.expected, got, "%s=%s", test.path, nil)
 	}
 }
@@ -140,17 +165,20 @@ func Test_getPathValues(t *testing.T) {
 	tests := []struct {
 		obj         map[string]any
 		prefix      string
-		expectedPvs [][]byte
+		expectedPvs []pathValue
 	}{
 		{
 			map[string]any{"a": 2, "b": 4, "c": "hey world"},
 			"",
-			[][]byte{pathValueAsKey("a", 2), pathValueAsKey("b", 4), pathValueAsKey("c", "hey world")},
+			[]pathValue{
+				{[]byte("a"), encodeTaggedValue(2)},
+				{[]byte("b"), encodeTaggedValue(4)},
+				{[]byte("c"), encodeTaggedValue("hey world")}},
 		},
 		{
 			map[string]any{"a": map[string]any{"12": "foo"}},
 			"",
-			[][]byte{pathValueAsKey("a.12", "foo")},
+			[]pathValue{{[]byte("a.12"), encodeTaggedValue("foo")}},
 		},
 		{
 			map[string]any{"a": map[string]any{
@@ -160,9 +188,9 @@ func Test_getPathValues(t *testing.T) {
 				},
 			}},
 			"",
-			[][]byte{
-				pathValueAsKey("a.b.c.d", "foo"),
-				pathValueAsKey("a.b.foo", "bar"),
+			[]pathValue{
+				{[]byte("a.b.c.d"), encodeTaggedValue("foo")},
+				{[]byte("a.b.foo"), encodeTaggedValue("bar")},
 			},
 		},
 	}
@@ -189,8 +217,8 @@ func Fuzz_fuzzNumberSort(f *testing.F) {
 	f.Add(123.23, 123.25)
 	f.Add(123.123, 123.123)
 	f.Fuzz(func(t *testing.T, a, b float64) {
-		h := pathValueAsKey("a", a)
-		l := pathValueAsKey("a", b)
+		h := encodeTaggedValue(a)
+		l := encodeTaggedValue(b)
 		if a > b {
 			assert.True(t, slices.Compare(h, l) > 0)
 		} else if a < b {
@@ -213,8 +241,8 @@ func Test_makeStringSort(t *testing.T) {
 		{"a whole lot of string", "a whole lot of text"},
 	}
 	for _, test := range tests {
-		h := pathValueAsKey("a", test.h)
-		l := pathValueAsKey("a", test.l)
+		h := encodeTaggedValue(test.h)
+		l := encodeTaggedValue(test.l)
 		assert.True(t, slices.Compare(h, l) > 0,
 			"%v %s !> %s %v", h, test.h, test.l, l)
 	}
@@ -222,13 +250,12 @@ func Test_makeStringSort(t *testing.T) {
 
 // Check against the CouchDB collation order.
 func Test_PVSortTypes(t *testing.T) {
-	p := "a.b.c"
-	assert.True(t, slices.Compare(pathValueAsKey(p, nil), pathValueAsKey(p, false)) < 0,
+	assert.True(t, slices.Compare(encodeTaggedValue(nil), encodeTaggedValue(false)) < 0,
 		"null should be less than false")
-	assert.True(t, slices.Compare(pathValueAsKey(p, false), pathValueAsKey(p, true)) < 0,
+	assert.True(t, slices.Compare(encodeTaggedValue(false), encodeTaggedValue(true)) < 0,
 		"false should be less than true")
-	assert.True(t, slices.Compare(pathValueAsKey(p, true), pathValueAsKey(p, 1234)) < 0,
+	assert.True(t, slices.Compare(encodeTaggedValue(true), encodeTaggedValue(1234)) < 0,
 		"true should be less than number")
-	assert.True(t, slices.Compare(pathValueAsKey(p, 1234), pathValueAsKey(p, "1234")) < 0,
+	assert.True(t, slices.Compare(encodeTaggedValue(1234), encodeTaggedValue("1234")) < 0,
 		"number should be less than string")
 }

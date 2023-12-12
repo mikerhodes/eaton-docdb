@@ -14,10 +14,13 @@ func Test_fwdIndexKey(t *testing.T) {
 		0x66, 0x6f, 0x6f, // foo
 		0x0, // separator
 	}
-	expected = append(expected, pathValueAsKey("active", false)...)
+	expected = append(expected, []byte("active")...)
+	expected = append(expected, sep...)
+	expected = append(expected, JSONTagFalse)
 	k := fwdIdxKey{
-		id:           "foo",
-		pathValueKey: pathValueAsKey("active", false),
+		id:          []byte("foo"),
+		path:        []byte("active"),
+		taggedValue: encodeTaggedValue(false),
 	}
 	assert.Equal(t, expected, encodeFwdIdxKey(k))
 
