@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -113,8 +112,7 @@ func lookupGTE(indexDb *pebble.DB, path string, value interface{}) ([]string, er
 
 func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := encodeInvIdxKey(
-		[]byte(path), encodeTaggedValue(value), nil)
+	startKey := pathValueEndKey(path, value)
 	endKey := pathEndKey(path)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
@@ -122,11 +120,6 @@ func lookupGT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 
 	iter := indexDb.NewIter(readOptions)
 	for iter.SeekGE(startKey); iter.Valid(); iter.Next() {
-		// As LowerBound is inclusive, we need to skip over
-		// entries at startKey to get greater than semantics.
-		if bytes.HasPrefix(iter.Key(), startKey) {
-			continue
-		}
 		// fmt.Printf("key=%+v value=%+v\n", iter.Key(), iter.Value())
 		id, err := decodeInvIndexKey(iter.Key())
 		if err != nil {
@@ -164,17 +157,7 @@ func lookupLTE(indexDb *pebble.DB, path string, value interface{}) ([]string, er
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
 	startKey := pathStartKey(path)
-	endKey := encodeInvIdxKey(
-		[]byte(path), encodeTaggedValue(value), nil)
-
-	// For less than or equal to, we have to explicitly do the
-	// equal to search, as UpperBound is exclusive so doesn't
-	// include equalTo.
-	eqs, err := lookupEq(indexDb, path, value)
-	if err != nil {
-		return nil, err
-	}
-	ids = append(ids, eqs...)
+	endKey := pathValueEndKey(path, value)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)
