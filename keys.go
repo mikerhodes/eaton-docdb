@@ -44,7 +44,7 @@ func decodeFwdIdxKey(b []byte) fwdIdxKey {
 
 // encodeFwdIdxKey serialises k to a byte slice.
 func encodeFwdIdxKey(k fwdIdxKey) []byte {
-	return packTuple(fwdIdxNamespace, k.id, k.path, k.taggedValue)
+	return packTuple([]byte{fwdIdxNamespace}, k.id, k.path, k.taggedValue)
 }
 
 // encodeInvIdxKey returns a byte slice containing an inverted
@@ -62,7 +62,7 @@ func encodeInvIdxKey(path, taggedValue, docID []byte) []byte {
 	//   `invIdxNamespace    `null between path and value
 	var sep byte = 0
 	buf := make([]byte, 0, 4+len(path)+len(taggedValue)+len(docID))
-	buf = append(buf, []byte{invIdxNamespace[0], sep}...)
+	buf = append(buf, []byte{invIdxNamespace, sep}...)
 	buf = append(buf, path...)
 	if taggedValue != nil {
 		buf = append(buf, sep)
@@ -91,7 +91,7 @@ func decodeInvIndexKey(k []byte) (InvIndexKey, error) {
 	sep := []byte{0}
 
 	// Check namespace of key and following sep
-	if k[0] != invIdxNamespace[0] || k[1] != 0 {
+	if k[0] != invIdxNamespace || k[1] != 0 {
 		// error
 		return iik, errors.New(
 			fmt.Sprintf(

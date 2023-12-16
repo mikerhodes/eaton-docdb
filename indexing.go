@@ -40,8 +40,8 @@ import (
 // Pebble database, we use a key prefix to namespace the two
 // indexes.
 
-var invIdxNamespace []byte = []byte{'i'}
-var fwdIdxNamespace []byte = []byte{'f'}
+var invIdxNamespace byte = 'i'
+var fwdIdxNamespace byte = 'f'
 
 // index adds document to the index, associated with id.
 func index(indexDB *pebble.DB, id string, document map[string]any) {
@@ -97,8 +97,8 @@ func unindex(indexDb *pebble.DB, docID []byte) error {
 
 	// 1. Get the range for id from the forward index. Everything
 	//    is encoded into the keys.
-	startKey := packTuple(fwdIdxNamespace, docID)
-	endKey := packTuple(fwdIdxNamespace, docID)
+	startKey := packTuple([]byte{fwdIdxNamespace}, docID)
+	endKey := packTuple([]byte{fwdIdxNamespace}, docID)
 	endKey = append(endKey, 1) // 1 > 0-separator
 
 	// 2. Read all the keys. Deserialise each key to find the
