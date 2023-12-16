@@ -30,10 +30,11 @@ type fwdIdxKey struct {
 
 // decodeFwdIdxKey deserialises a fwdIndexKey from b
 func decodeFwdIdxKey(b []byte) fwdIdxKey {
-	// We need to use unpackTupleN because pathValueKey is
-	// itself a tuple with multiple components, and we don't
-	// want to split that.
-	// [ fwdIdxNS, docId, pathValueKey ]
+	// We need to use unpackTupleN because the tagged value
+	// may contain 00 bytes, and we don't want to split that.
+	// As it's last in the key, we can safely assume it's the
+	// remainder of the key.
+	// [ fwdIdxNS, docId, path, taggedValue ]
 	parts := unpackTupleN(b, 4)
 	return fwdIdxKey{
 		id:          parts[1],
