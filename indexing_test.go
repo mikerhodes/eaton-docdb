@@ -42,7 +42,7 @@ func Test_unindex(t *testing.T) {
 	ids, _ := lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc1", "doc2", "doc3"}, ids)
 
-	unindex(db, "doc1")
+	unindex(db, []byte("doc1"))
 
 	ids, _ = lookupEq(db, "a.b", 1)
 	assert.ElementsMatch(t, []string{"doc2", "doc3"}, ids)

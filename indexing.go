@@ -6,20 +6,54 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
+// This file contains the two key functions for maintaining the index:
+// - index
+// - unindex
+//
+// Indexing grabs each of the "path values" for the JSON document,
+// a combination of the dotted path of field names and the value
+// at the path. The value can be of various types, so is encoded
+// with a tag to identify the type (see encodeValue).
+// When indexing, we create an inverted index key (invIdxKey variable
+// usually). The form of this key can be seen in encodeInvIdxKey.
+// It's constructed to make it quick to look up values in particular
+// fields and return the IDs that match.
+//
+// When indexing, we also create a "forward index", where we create
+// a second index structure that allows us to look up all entries
+// in the inverted index for a given doc ID. This can be seen in
+// fwdIdxKey. This is needed so that we can delete and update
+// documents, because it allows us to know what keys the document
+// was previously indexed under.
+//
+// When we delete a document, we use the forward index
+// to look up all the keys to delete in the inverted index, then
+// clean up the forward index.
+//
+// When updating, we use the forward index to first remove the
+// existing forward index keys, then proceed to index the new
+// document content from scratch. We could decrease the write
+// amplication that this creates by instead calculating a
+// delta to apply to the inverted index, but for now we don't.
+//
+// The inverted and forward indexes are stored in the same
+// Pebble database, we use a key prefix to namespace the two
+// indexes.
+
 var invIdxNamespace []byte = []byte{'i'}
 var fwdIdxNamespace []byte = []byte{'f'}
 
 // index adds document to the index, associated with id.
 func index(indexDB *pebble.DB, id string, document map[string]any) {
+	docID := []byte(id)
 	// First, unindex the document
-	err := unindex(indexDB, id)
+	err := unindex(indexDB, docID)
 	if err != nil {
 		log.Printf("Could not unindex %q: %v", id, err)
 		return
 	}
 
 	b := indexDB.NewBatch()
-	docID := []byte(id)
 
 	// Now, index the new values for the document
 	pv := getPathValues(document, "")
@@ -54,7 +88,7 @@ func index(indexDB *pebble.DB, id string, document map[string]any) {
 }
 
 // unindex removes index entries for id from indexDb
-func unindex(indexDb *pebble.DB, id string) error {
+func unindex(indexDb *pebble.DB, docID []byte) error {
 	// To unindex, we use the forward index (id -> pathValueKeys) to
 	// find all the keys in the inverted index to remove. After removing
 	// those, we clean up the forward index.
@@ -63,8 +97,8 @@ func unindex(indexDb *pebble.DB, id string) error {
 
 	// 1. Get the range for id from the forward index. Everything
 	//    is encoded into the keys.
-	startKey := packTuple(fwdIdxNamespace, []byte(id))
-	endKey := packTuple(fwdIdxNamespace, []byte(id))
+	startKey := packTuple(fwdIdxNamespace, docID)
+	endKey := packTuple(fwdIdxNamespace, docID)
 	endKey = append(endKey, 1) // 1 > 0-separator
 
 	// 2. Read all the keys. Deserialise each key to find the
