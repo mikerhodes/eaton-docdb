@@ -70,8 +70,7 @@ func searchIndex(indexDb *pebble.DB, q *query) ([]string, error) {
 
 func lookupEq(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := encodeInvIdxKey(
-		[]byte(path), encodeTaggedValue(value), nil)
+	startKey := pathValueStartKey(path, value)
 	endKey := pathValueEndKey(path, value)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
@@ -93,8 +92,7 @@ func lookupEq(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 
 func lookupGTE(indexDb *pebble.DB, path string, value interface{}) ([]string, error) {
 	ids := []string{}
-	startKey := encodeInvIdxKey(
-		[]byte(path), encodeTaggedValue(value), nil)
+	startKey := pathValueStartKey(path, value)
 	endKey := pathEndKey(path)
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
@@ -144,8 +142,7 @@ func lookupLT(indexDb *pebble.DB, path string, value interface{}) ([]string, err
 	// We could use iter.Prev() to get the descending ordering
 	ids := []string{}
 	startKey := pathStartKey(path)
-	endKey := encodeInvIdxKey(
-		[]byte(path), encodeTaggedValue(value), nil)
+	endKey := pathValueStartKey(path, value) // As less-than, stop at the first key for the path, value
 
 	readOptions := &pebble.IterOptions{LowerBound: startKey, UpperBound: endKey}
 	fmt.Printf("lessThan: %+v\n", readOptions)
@@ -195,6 +192,11 @@ func lookupLTE(indexDb *pebble.DB, path string, value interface{}) ([]string, er
 	return ids, iter.Close()
 }
 
+// pathStartKey returns a key that at the lower bound that
+// path could have.
+func pathStartKey(path string) []byte {
+	buf := encodeInvIdxKey([]byte(path), nil, nil)
+	return append(buf, 0)
 }
 
 // pathEndKey returns a key just beyond the end of the range
@@ -211,6 +213,12 @@ func pathEndKey(path string) []byte {
 	return append(buf, 1)
 }
 
+// pathValueStartKey returns the key at the lower bound of keys
+// for path and value.
+func pathValueStartKey(path string, value interface{}) []byte {
+	return encodeInvIdxKey([]byte(path), encodeTaggedValue(value), nil)
+}
+
 // pathValueEndKey returns a key just beyond the end of the path-value
 // range.
 func pathValueEndKey(path string, value interface{}) []byte {
@@ -219,11 +227,4 @@ func pathValueEndKey(path string, value interface{}) []byte {
 	// doc ID to generate an upper bound.
 	k := encodeInvIdxKey([]byte(path), encodeTaggedValue(value), nil)
 	return append(k, 1)
-}
-
-// pathStartKey returns a key that is the lowest that
-// path could have.
-func pathStartKey(path string) []byte {
-	buf := encodeInvIdxKey([]byte(path), nil, nil)
-	return append(buf, 0)
 }
