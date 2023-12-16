@@ -8,22 +8,6 @@ import (
 	// "github.com/google/uuid"
 )
 
-// Tags for the values of JSON
-// primitives. Objects and arrays
-// are encoded into the path.
-// Tags are inserted prior to the
-// values in pathValues for keys to
-// ensure sort ordering.
-const (
-	// printable character makes easier debugging
-	JSONTagNull   = 0x28 // char: (
-	JSONTagFalse  = 0x29 // char: )
-	JSONTagTrue   = 0x2a // char: *
-	JSONTagNumber = 0x2b // char: +
-	JSONTagString = 0x2c // char: ,
-
-)
-
 type server struct {
 	db      *pebble.DB // Primary data
 	indexDb *pebble.DB // Index data

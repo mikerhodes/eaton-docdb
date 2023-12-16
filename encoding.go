@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"log"
 	"math"
@@ -77,39 +76,4 @@ func encodeTaggedValue(value interface{}) []byte {
 		panic(1)
 	}
 	return taggedV
-}
-
-// pathValueAsKey returns a []byte key for path and value.
-// func pathValueAsKey(path string, value interface{}) []byte {
-// A key for path and value looks like:
-// [66, 6f, 6f, 00, 2c, 68, 65, 6c, 6c, 6f]
-//  ----------  --  --  ------------------
-//  path (foo)  |   |   value (hello)
-//              |   `JSONTagString
-//              `null between path and value
-// return packTuple([]byte(path), encodeTaggedValue(value))
-// }
-
-// packTuple packs a set of components into a packed byte array
-// representation. Use unpackTuple[N] to unpack.
-// 0x00 is used as the separator.
-func packTuple(components ...[]byte) []byte {
-	return bytes.Join(components, sep)
-}
-
-// unpackTuple unpacked packed into its components.
-// It is equivalent to unpackTupleN with a count of -1.
-func unpackTuple(packed []byte) [][]byte {
-	return unpackTupleN(packed, -1)
-}
-
-// unpackTupleN unpacks packed into its components.
-//
-// The count determines the number of components to return:
-//
-//	n > 0: at most n subslices; the last subslice will be the unsplit remainder.
-//	n == 0: the result is nil (zero subslices)
-//	n < 0: all subslices
-func unpackTupleN(packed []byte, n int) [][]byte {
-	return bytes.SplitN(packed, sep, n)
 }

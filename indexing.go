@@ -126,31 +126,6 @@ func unindex(indexDb *pebble.DB, docID []byte) error {
 	return indexDb.Apply(b, pebble.Sync)
 }
 
-type fwdIdxKey struct {
-	id          []byte
-	path        []byte
-	taggedValue []byte
-}
-
-// decodeFwdIdxKey deserialises a fwdIndexKey from b
-func decodeFwdIdxKey(b []byte) fwdIdxKey {
-	// We need to use unpackTupleN because pathValueKey is
-	// itself a tuple with multiple components, and we don't
-	// want to split that.
-	// [ fwdIdxNS, docId, pathValueKey ]
-	parts := unpackTupleN(b, 4)
-	return fwdIdxKey{
-		id:          parts[1],
-		path:        parts[2],
-		taggedValue: parts[3],
-	}
-}
-
-// encodeFwdIdxKey serialises k to a byte slice.
-func encodeFwdIdxKey(k fwdIdxKey) []byte {
-	return packTuple(fwdIdxNamespace, k.id, k.path, k.taggedValue)
-}
-
 type pathValue struct {
 	path, taggedValue []byte
 }
